@@ -2,7 +2,7 @@
 
 Repo: https://github.com/michael-gt-12/go_backend_journey
 
-My public learning log for a **62-day Go backend + AI backend track**, running from **Sun Oct 18, 2026 to Sun Jan 3, 2027**. I'm Michael, a 4th-year Software Engineering student at Adama Science & Technology University (ASTU), and I'm building this in public so every claim is backed by code, tests and commits.
+My public learning log for a **65-day Go backend + AI backend track**, running from **Sun Oct 18, 2026 to Sun Jan 3, 2027**. I'm Michael, a 4th-year Software Engineering student at Adama Science & Technology University (ASTU), and I'm building this in public so every claim is backed by code, tests and commits.
 
 **Goal:** go from Go basics to deployed, tested backend services, including four AI-powered backend projects, and finish with a portfolio I can point recruiters to.
 
@@ -12,7 +12,7 @@ My public learning log for a **62-day Go backend + AI backend track**, running f
 - Every day has a "Done when" line that acts as my acceptance test. I push only when it is true.
 - Sundays are buffer days for slipped work, the weekly check-in and the weekly recap post.
 - Mid-exam week (Nov 23-27) is maintenance only. The plan resumes Sat Nov 28.
-- Post format: `Day N/90 - what I built - what I learned - what is next - repo link`.
+- Post format: `Day N/65 - what I built - what I learned - what is next - repo link`.
 
 ## The plan
 
