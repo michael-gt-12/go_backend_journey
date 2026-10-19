@@ -61,22 +61,10 @@ Go, Gin, MongoDB, PostgreSQL (pgx, pgvector), Redis, Docker and Compose, GitHub 
 
 ## Progress
 
-- [ ] Day 1: environment setup, Go basics, repo and README
-- [ ] Days 2-4: Tasks 1-2
-- [ ] Days 5-8: Task 3 (Gin + Postman)
-- [ ] Days 9-12: Task 4 (MongoDB)
-- [ ] Days 13-15: Task 5 (JWT)
-- [ ] Days 16-19: Task 6 (Clean Architecture)
-- [ ] Days 20-22: Task 7 (testing)
-- [ ] Days 23-27: Task 8 (concurrency)
-- [ ] Days 28-33: Task 9 (PostgreSQL)
-- [ ] Days 34-36: Task 10 (Docker)
-- [ ] Days 37-39: Task 11 (Redis)
-- [ ] Days 40-41: Task 12 (CI + Render)
-- [ ] Days 42-46: SupportDesk AI
-- [ ] Days 47-52: DocuAsk
-- [ ] Days 53-57: LLM Gateway
-- [ ] Days 58-62: OpsAgent
+| Day | Date   | Topic                                                   | Code         |
+| --- | ------ | ------------------------------------------------------- | ------------ |
+| 1   | Oct 18 | Environment setup, Go basics, hello-world, FizzBuzz CLI | `Days/Day_1` |
+| 2   | Oct 19 | Structs, methods, interfaces, custom errors, generics   | `Days/Day_2` |
 
 ## Day 1 (Oct 18)
 
@@ -84,6 +72,15 @@ Go, Gin, MongoDB, PostgreSQL (pgx, pgvector), Redis, Docker and Compose, GitHub 
 - Initialised this repo with `go mod init`
 - Hello-world and a small FizzBuzz CLI
 - Tour of Go: Basics
+
+## Day 2 - interfaces, errors and generics
+
+Built in `Days/Day_2`, each piece with table-driven tests:
+
+- **`shape.go`**: a `Shape` interface (`Area`, `Perimeter`) implemented by `Rectangle` and `Circle`. Types satisfy interfaces implicitly, and a compile-time check (`var _ Shape = Rectangle{}`) guards it.
+- **`errors.go`**: a custom `ValidationError` type and `ValidateAge`. Tests use `errors.As` to recover the concrete error type.
+- **`generics.go`**: generic `Map[T, U]` and `Filter[T]`.
+  What I learned: interfaces are satisfied implicitly, errors are just values with an `Error() string` method, and generics let one function work across types without losing type safety.
 
 ## Follow along
 
