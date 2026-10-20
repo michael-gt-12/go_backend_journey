@@ -61,10 +61,11 @@ Go, Gin, MongoDB, PostgreSQL (pgx, pgvector), Redis, Docker and Compose, GitHub 
 
 ## Progress
 
-| Day | Date   | Topic                                                   | Code         |
-| --- | ------ | ------------------------------------------------------- | ------------ |
-| 1   | Oct 18 | Environment setup, Go basics, hello-world, FizzBuzz CLI | `Days/Day_1` |
-| 2   | Oct 19 | Structs, methods, interfaces, custom errors, generics   | `Days/Day_2` |
+| Day | Date         | Topic                                                   | Code                                              |
+| --- | ------------ | ------------------------------------------------------- | ------------------------------------------------- |
+| 1   | Oct 18       | Environment setup, Go basics, hello-world, FizzBuzz CLI | `Days/Day_1`                                      |
+| 2   | Oct 19       | Structs, methods, interfaces, custom errors, generics   | `Days/Day_2`                                      |
+| 3   | Oct 20, 2026 | Task 1 (word frequency, palindromes) + Task 2 skeleton  | `Tasks/Task_1`, `Tasks/Task_2/library_management` |
 
 ## Day 1 (Oct 18)
 
@@ -81,6 +82,28 @@ Built in `Days/Day_2`, each piece with table-driven tests:
 - **`errors.go`**: a custom `ValidationError` type and `ValidateAge`. Tests use `errors.As` to recover the concrete error type.
 - **`generics.go`**: generic `Map[T, U]` and `Filter[T]`.
   What I learned: interfaces are satisfied implicitly, errors are just values with an `Error() string` method, and generics let one function work across types without losing type safety.
+
+## Day 3: Task 1 and the Task 2 skeleton
+
+**What I built**
+
+- `WordFrequency`: case-insensitive word counts that ignore punctuation (`strings.FieldsFunc` plus `unicode` checks).
+- `IsPalindrome`: ignores spaces, punctuation and case. It works on runes, so Amharic text is handled correctly.
+- Table-driven tests (empty string, punctuation only, mixed case, digits, Amharic, accents).
+- The Task 2 `library_management` skeleton: required folder structure, `Book` and `Member` models, and the 6-method `LibraryManager` interface.
+
+**What I learned**
+
+- A Go string is bytes, not characters. Ranging over it gives runes, which is what makes Unicode text safe.
+- `strings.FieldsFunc` is more flexible than `strings.Fields` because I decide what a separator is.
+- Designing the interface before the implementation shows what the service must do.
+
+**How to run**
+
+```bash
+cd Tasks/Task_1 && go test -cover ./...
+cd Tasks/Task_2/library_management && go run .
+```
 
 ## Follow along
 
