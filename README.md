@@ -61,11 +61,12 @@ Go, Gin, MongoDB, PostgreSQL (pgx, pgvector), Redis, Docker and Compose, GitHub 
 
 ## Progress
 
-| Day | Date         | Topic                                                   | Code                                              |
-| --- | ------------ | ------------------------------------------------------- | ------------------------------------------------- |
-| 1   | Oct 18       | Environment setup, Go basics, hello-world, FizzBuzz CLI | `Days/Day_1`                                      |
-| 2   | Oct 19       | Structs, methods, interfaces, custom errors, generics   | `Days/Day_2`                                      |
-| 3   | Oct 20, 2026 | Task 1 (word frequency, palindromes) + Task 2 skeleton  | `Tasks/Task_1`, `Tasks/Task_2/library_management` |
+| Day | Date         | Topic                                                                | Code                                              |
+| --- | ------------ | -------------------------------------------------------------------- | ------------------------------------------------- |
+| 1   | Oct 18       | Environment setup, Go basics, hello-world, FizzBuzz CLI              | `Days/Day_1`                                      |
+| 2   | Oct 19       | Structs, methods, interfaces, custom errors, generics                | `Days/Day_2`                                      |
+| 3   | Oct 20, 2026 | Task 1 (word frequency, palindromes) + Task 2 skeleton               | `Tasks/Task_1`, `Tasks/Task_2/library_management` |
+| 4   | Oct 21, 2026 | Task 2: Console Library Management System (interfaces, maps, errors) | `Tasks/Task_2/library_management`                 |
 
 ## Day 1 (Oct 18)
 
@@ -104,6 +105,40 @@ Built in `Days/Day_2`, each piece with table-driven tests:
 cd Tasks/Task_1 && go test -cover ./...
 cd Tasks/Task_2/library_management && go run .
 ```
+
+## Day 4 — Task 2: Library Management System
+
+### What I built
+
+A console-based library system. A `LibraryManager` interface defines six
+operations, implemented by a `Library` service that stores books and members
+in maps. A menu loop (built with `bufio`) lets the user add and remove books,
+borrow and return them, list available books, and list the books a member has
+borrowed.
+
+### What I learned
+
+- Go interfaces are implemented implicitly; `var _ LibraryManager = (*Library)(nil)`
+  makes the compiler verify it.
+- Maps hold copies of structs, so updated values must be written back.
+- Errors are values: sentinel errors give clear, testable failure cases
+  (book not found, member not found, already borrowed, not borrowed by member).
+- Validate console input before using it.
+
+### How to run
+
+```bash
+cd Tasks/Task_2/library_management
+go run main.go
+```
+
+### How to test
+
+```bash
+go test ./...
+```
+
+See `docs/documentation.md` for the folder structure and error cases.
 
 ## Follow along
 
