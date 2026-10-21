@@ -1,13 +1,17 @@
 package main
 
 import (
-	"fmt"
-
+	"library_management/controllers"
+	"library_management/models"
 	"library_management/services"
 )
 
 func main() {
 	lib := services.NewLibrary()
-	_ = lib // wired to the console controller on Day 4
-	fmt.Println("Library Management System - skeleton ready")
+
+	// Seed members (the interface has no AddMember).
+	lib.AddMember(models.Member{ID: 1, Name: "Abel"})
+	lib.AddMember(models.Member{ID: 2, Name: "Sara"})
+
+	controllers.NewLibraryController(lib).Run()
 }
