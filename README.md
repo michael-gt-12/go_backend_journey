@@ -67,6 +67,7 @@ Go, Gin, MongoDB, PostgreSQL (pgx, pgvector), Redis, Docker and Compose, GitHub 
 | 2   | Oct 19       | Structs, methods, interfaces, custom errors, generics                | `Days/Day_2`                                      |
 | 3   | Oct 20, 2026 | Task 1 (word frequency, palindromes) + Task 2 skeleton               | `Tasks/Task_1`, `Tasks/Task_2/library_management` |
 | 4   | Oct 21, 2026 | Task 2: Console Library Management System (interfaces, maps, errors) | `Tasks/Task_2/library_management`                 |
+| 5   | Oct 22, 2026 | Gin REST API basics: routing, JSON, handlers, request binding        | [Days/Day_5/gin-albums](Days/Day_5/gin-albums)    |
 
 ## Day 1 (Oct 18)
 
@@ -139,6 +140,47 @@ go test ./...
 ```
 
 See `docs/documentation.md` for the folder structure and error cases.
+
+## Day 5 – Gin REST API basics (Oct 22, 2026)
+
+### What I built
+
+An albums REST API with Go and Gin, in `Days/Day_5/gin-albums`, following the official Go + Gin tutorial and extending it myself:
+
+| Method | Endpoint      | Description                        | Status codes |
+| ------ | ------------- | ---------------------------------- | ------------ |
+| GET    | `/albums`     | List all albums                    | 200          |
+| GET    | `/albums/:id` | Get one album                      | 200, 404     |
+| POST   | `/albums`     | Add an album from a JSON body      | 201, 400     |
+| DELETE | `/albums/:id` | Delete an album (my own extension) | 200, 404     |
+
+Missing albums return a JSON body: `{"message": "album not found"}`. Data is stored in an in-memory slice, so it resets when the server restarts.
+
+### What I learned
+
+- How Gin routes requests and reads URL parameters with `c.Param("id")`.
+- How `BindJSON` turns a request body into a struct, and how struct tags (`json:"title"`) control JSON field names.
+- Which status code fits which result: 200 OK, 201 Created, 404 Not Found.
+- Deleting from a slice with `append(albums[:i], albums[i+1:]...)`. The `...` is required.
+- On Windows PowerShell, `curl` is an alias for `Invoke-WebRequest`. Use `curl.exe` to get the real curl (`-X`, `-i`, `-d`).
+
+### How to run
+
+```bash
+cd Days/Day_5/gin-albums
+go mod tidy
+go run .          # server starts on localhost:8000
+```
+
+Test it from a second terminal:
+
+```powershell
+curl.exe http://localhost:8000/albums
+curl.exe http://localhost:8000/albums/2
+curl.exe -i http://localhost:8000/albums/99
+curl.exe -X DELETE http://localhost:8000/albums/1
+curl.exe -i -X POST http://localhost:8000/albums -H "Content-Type: application/json" -d "@album.json"
+```
 
 ## Follow along
 
