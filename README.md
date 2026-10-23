@@ -61,13 +61,14 @@ Go, Gin, MongoDB, PostgreSQL (pgx, pgvector), Redis, Docker and Compose, GitHub 
 
 ## Progress
 
-| Day | Date         | Topic                                                                | Code                                              |
-| --- | ------------ | -------------------------------------------------------------------- | ------------------------------------------------- |
-| 1   | Oct 18       | Environment setup, Go basics, hello-world, FizzBuzz CLI              | `Days/Day_1`                                      |
-| 2   | Oct 19       | Structs, methods, interfaces, custom errors, generics                | `Days/Day_2`                                      |
-| 3   | Oct 20, 2026 | Task 1 (word frequency, palindromes) + Task 2 skeleton               | `Tasks/Task_1`, `Tasks/Task_2/library_management` |
-| 4   | Oct 21, 2026 | Task 2: Console Library Management System (interfaces, maps, errors) | `Tasks/Task_2/library_management`                 |
-| 5   | Oct 22, 2026 | Gin REST API basics: routing, JSON, handlers, request binding        | [Days/Day_5/gin-albums](Days/Day_5/gin-albums)    |
+| Day | Date         | Topic                                                                     | Code                                                           |
+| --- | ------------ | ------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| 1   | Oct 18       | Environment setup, Go basics, hello-world, FizzBuzz CLI                   | `Days/Day_1`                                                   |
+| 2   | Oct 19       | Structs, methods, interfaces, custom errors, generics                     | `Days/Day_2`                                                   |
+| 3   | Oct 20, 2026 | Task 1 (word frequency, palindromes) + Task 2 skeleton                    | `Tasks/Task_1`, `Tasks/Task_2/library_management`              |
+| 4   | Oct 21, 2026 | Task 2: Console Library Management System (interfaces, maps, errors)      | `Tasks/Task_2/library_management`                              |
+| 5   | Oct 22, 2026 | Gin REST API basics: routing, JSON, handlers, request binding             | [Days/Day_5/gin-albums](Days/Day_5/gin-albums)                 |
+| 6   | Oct 23       | Task 3: Gin project structure, in-memory store with mutex, task endpoints | [Tasks/Task_3/task_manager_api](Tasks/Task_3/task_manager_api) |
 
 ## Day 1 (Oct 18)
 
@@ -181,6 +182,33 @@ curl.exe -i http://localhost:8000/albums/99
 curl.exe -X DELETE http://localhost:8000/albums/1
 curl.exe -i -X POST http://localhost:8000/albums -H "Content-Type: application/json" -d "@album.json"
 ```
+
+## Day 6 - Oct 23: Task Manager API (Task 3, structure)
+
+### What I built
+
+- Set up the Task 3 project layout: `models/`, `data/`, `controllers/`, `router/`, `docs/` and a `main.go` that only starts the app
+- A `Task` model with ID, Title, Description, DueDate and Status
+- An in-memory store (a map protected by `sync.RWMutex`) with seeded sample tasks and server-generated IDs
+- A data layer that holds the business logic and returns values or errors, and a controller layer that turns them into HTTP responses
+- Endpoints: `GET /tasks`, `GET /tasks/:id`, plus `POST`, `PUT` and `DELETE` (started early), with a 404 and `{"error": "..."}` for missing tasks
+- Tested every endpoint in Postman
+
+### What I learned
+
+1. Keep layers separate: the data layer should not know about Gin, it returns `(Task, error)` and the controller picks the status code.
+2. Go maps store copies of structs, so a changed task must be written back into the map. Map order is also random, so I sort before returning a list.
+3. A mutex protects shared data when requests arrive at the same time: `RLock` for reads, `Lock` for writes.
+4. `go mod verify` can reveal a corrupted module cache, and `go clean -modcache` followed by `go mod tidy` fixes it.
+
+### How to run
+
+```bash
+cd Tasks/Task_3/task_manager_api
+go run .
+```
+
+The server starts on `http://localhost:8080`. Try `GET /tasks`, `GET /tasks/1` and `GET /tasks/999` (404).
 
 ## Follow along
 
