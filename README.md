@@ -69,6 +69,7 @@ Go, Gin, MongoDB, PostgreSQL (pgx, pgvector), Redis, Docker and Compose, GitHub 
 | 4   | Oct 21, 2026 | Task 2: Console Library Management System (interfaces, maps, errors)      | `Tasks/Task_2/library_management`                              |
 | 5   | Oct 22, 2026 | Gin REST API basics: routing, JSON, handlers, request binding             | [Days/Day_5/gin-albums](Days/Day_5/gin-albums)                 |
 | 6   | Oct 23       | Task 3: Gin project structure, in-memory store with mutex, task endpoints | [Tasks/Task_3/task_manager_api](Tasks/Task_3/task_manager_api) |
+| 7   | Oct 24, 2026 | Task 3: POST/PUT/DELETE endpoints, validation, consistent errors          | Tasks/Task_3/task_manager                                      |
 
 ## Day 1 (Oct 18)
 
@@ -209,6 +210,40 @@ go run .
 ```
 
 The server starts on `http://localhost:8080`. Try `GET /tasks`, `GET /tasks/1` and `GET /tasks/999` (404).
+
+## Day 7 - Task Manager API: Create, Update, Delete + Validation
+
+### What I built
+
+- `POST /tasks` creates a task and returns `201 Created`
+- `PUT /tasks/:id` updates a task and returns `200 OK` with the updated task
+- `DELETE /tasks/:id` deletes a task (returns 204 No Content)
+- Request validation with Gin binding tags:
+  - `title` is required
+  - `due_date` must be a valid RFC 3339 date
+  - `status` must be one of `pending`, `in_progress` or `done`
+- One consistent error format everywhere: `{"error": "message"}`
+- `400` for invalid input and `404` when the task does not exist
+- Thread-safe in-memory storage (`map` + `sync.RWMutex`) with a sentinel `ErrTaskNotFound` error
+
+### What I learned
+
+1. `ShouldBindJSON` lets me control the error response, while `BindJSON` writes its own plain-text 400.
+2. Validation rules live in struct tags (`binding:"required,oneof=..."`), so handlers stay short.
+3. A shared `respondError` helper keeps every error response identical, which makes the API easier to document and test.
+4. Write operations need `mu.Lock()`, while reads can use `RLock()`.
+
+### How to run
+
+cd Tasks/Task_3/task_manager
+go run main.go
+
+Create a task (on Windows PowerShell use `curl.exe`):
+
+curl.exe -X POST http://localhost:8080/tasks -H "Content-Type: application/json" -d "{\"title\":\"Study Go\",\"description\":\"Gin\",\"due_date\":\"2026-11-01T10:00:00Z\",\"status\":\"pending\"}"
+
+Update: curl.exe -X PUT http://localhost:8080/tasks/1 -H "Content-Type: application/json" -d "@body.json"
+Delete: curl.exe -X DELETE http://localhost:8080/tasks/1
 
 ## Follow along
 
