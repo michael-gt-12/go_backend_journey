@@ -70,6 +70,7 @@ Go, Gin, MongoDB, PostgreSQL (pgx, pgvector), Redis, Docker and Compose, GitHub 
 | 5   | Oct 22, 2026 | Gin REST API basics: routing, JSON, handlers, request binding             | [Days/Day_5/gin-albums](Days/Day_5/gin-albums)                 |
 | 6   | Oct 23       | Task 3: Gin project structure, in-memory store with mutex, task endpoints | [Tasks/Task_3/task_manager_api](Tasks/Task_3/task_manager_api) |
 | 7   | Oct 24, 2026 | Task 3: POST/PUT/DELETE endpoints, validation, consistent errors          | Tasks/Task_3/task_manager                                      |
+| 8   | Oct 26       | Postman API documentation, Task 3 finished                                | Tasks/Task_3/                                                  |
 
 ## Day 1 (Oct 18)
 
@@ -244,6 +245,31 @@ curl.exe -X POST http://localhost:8080/tasks -H "Content-Type: application/json"
 
 Update: curl.exe -X PUT http://localhost:8080/tasks/1 -H "Content-Type: application/json" -d "@body.json"
 Delete: curl.exe -X DELETE http://localhost:8080/tasks/1
+
+### Day 8 – Oct 26: Postman documentation (Task 3 complete)
+
+**What I built**
+
+- A Postman collection for all 5 Task Manager endpoints (GET all, GET by ID, POST, PUT, DELETE)
+- Saved example responses for the success, 400 and 404 cases
+- A description for every request and an overview for the collection
+- Published public API docs: `https://documenter.getpostman.com/view/57227945/2sBYHUULJ5`
+- `docs/api_documentation.md` with the payloads, responses, status codes and run instructions
+
+**What I learned**
+
+1. Good API docs let someone use the API without reading the code.
+2. Saved examples in Postman double as documentation and as a regression test.
+3. Keeping one error format (`{"error": "message"}`) makes the docs simpler and the API predictable.
+
+**How to run**
+
+```bash
+cd Tasks/Task_3
+go run main.go
+```
+
+The server runs on `http://localhost:8080`. See `docs/api_documentation.md` or the Postman link for all endpoints.
 
 ## Follow along
 
