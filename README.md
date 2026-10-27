@@ -71,6 +71,7 @@ Go, Gin, MongoDB, PostgreSQL (pgx, pgvector), Redis, Docker and Compose, GitHub 
 | 6   | Oct 23       | Task 3: Gin project structure, in-memory store with mutex, task endpoints | [Tasks/Task_3/task_manager_api](Tasks/Task_3/task_manager_api) |
 | 7   | Oct 24, 2026 | Task 3: POST/PUT/DELETE endpoints, validation, consistent errors          | Tasks/Task_3/task_manager                                      |
 | 8   | Oct 26       | Postman API documentation, Task 3 finished                                | Tasks/Task_3/                                                  |
+| 9   | Oct 27       | MongoDB fundamentals (documents, collections, ObjectID, CRUD, filters)    | [Days/Day_9](Days/Day_9)                                       |
 
 ## Day 1 (Oct 18)
 
@@ -270,6 +271,28 @@ go run main.go
 ```
 
 The server runs on `http://localhost:8080`. See `docs/api_documentation.md` or the Postman link for all endpoints.
+
+## Day 9 — MongoDB Fundamentals
+
+### What I built
+
+- Installed MongoDB Community Server and mongosh locally and connected through Compass
+- Created the `taskmanager` database with a `tasks` collection holding 10 sample documents
+- Ran 5 queries by hand: filter by status, sort by due date, count by status (aggregation), update many, delete one
+- Wrote `mongo-notes.md` documenting each query, its result, and the ObjectID vs string ID difference
+
+### What I learned
+
+1. A document is one record (like one `Task`), and a collection is a group of documents
+2. `_id` is an auto-generated `ObjectId`, not a string, so lookups by ID need a conversion
+3. Filters choose which documents are affected, and `$set` changes only the fields I name
+
+### How to run
+
+1. Make sure the MongoDB server is running (the MongoDB Server service on Windows)
+2. Open the shell in Compass (or run `mongosh`) and connect to `mongodb://localhost:27017`
+3. Switch to the database with `use taskmanager`
+4. Run the commands from `Days/Day_9/mongo-notes.md` one at a time
 
 ## Follow along
 
