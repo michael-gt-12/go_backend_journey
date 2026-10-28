@@ -72,6 +72,7 @@ Go, Gin, MongoDB, PostgreSQL (pgx, pgvector), Redis, Docker and Compose, GitHub 
 | 7   | Oct 24, 2026 | Task 3: POST/PUT/DELETE endpoints, validation, consistent errors          | Tasks/Task_3/task_manager                                      |
 | 8   | Oct 26       | Postman API documentation, Task 3 finished                                | Tasks/Task_3/                                                  |
 | 9   | Oct 27       | MongoDB fundamentals (documents, collections, ObjectID, CRUD, filters)    | [Days/Day_9](Days/Day_9)                                       |
+| 10  | Oct 28, 2026 | MongoDB Go driver: connect, context, CRUD                                 | [Days/Day_10](Days/Day_10)                                     |
 
 ## Day 1 (Oct 18)
 
@@ -293,6 +294,34 @@ The server runs on `http://localhost:8080`. See `docs/api_documentation.md` or t
 2. Open the shell in Compass (or run `mongosh`) and connect to `mongodb://localhost:27017`
 3. Switch to the database with `use taskmanager`
 4. Run the commands from `Days/Day_9/mongo-notes.md` one at a time
+
+## Day 10 - MongoDB Go Driver (Oct 28, 2026)
+
+**Folder:** `Days/Day_10/mongo-scratch`
+
+### What I built
+
+- A scratch Go program that connects to a local MongoDB and runs the full CRUD cycle on the `taskmanager.tasks` collection.
+- `Connect` + `Ping` to confirm the server is reachable.
+- `InsertOne`, `FindOne`, `Find` (with a filter), `UpdateOne` (with `$set`) and `DeleteOne`.
+- A `Task` struct with `bson` tags, and a helper that gives every database call its own 5-second `context.WithTimeout`.
+- The connection string is read from the `MONGO_URI` env var. `.env` is git-ignored and `.env.example` is committed.
+
+### What I learned
+
+1. `Connect` alone doesn't prove the database is reachable, so `Ping` is needed to fail fast.
+2. `Find` returns a cursor, not a slice, so it must be read with `cursor.All` and closed with `defer cursor.Close(ctx)`.
+3. `MatchedCount` and `DeletedCount` tell me whether anything actually changed, which is how the API will return 404 in Task 4.
+4. `_id` is an `ObjectID`, not a string, so IDs from URLs need `primitive.ObjectIDFromHex`.
+
+### How to run
+
+```bash
+cd Days/Day_10/mongo-scratch
+cp .env.example .env        # PowerShell: Copy-Item .env.example .env
+go mod tidy
+go run .
+```
 
 ## Follow along
 
