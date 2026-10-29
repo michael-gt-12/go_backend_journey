@@ -73,6 +73,7 @@ Go, Gin, MongoDB, PostgreSQL (pgx, pgvector), Redis, Docker and Compose, GitHub 
 | 8   | Oct 26       | Postman API documentation, Task 3 finished                                | Tasks/Task_3/                                                  |
 | 9   | Oct 27       | MongoDB fundamentals (documents, collections, ObjectID, CRUD, filters)    | [Days/Day_9](Days/Day_9)                                       |
 | 10  | Oct 28, 2026 | MongoDB Go driver: connect, context, CRUD                                 | [Days/Day_10](Days/Day_10)                                     |
+| 11  | Oct 29       | MongoDB in the Task Manager API: connect, GetAll, GetByID, Create         | Tasks/Task_4                                                   |
 
 ## Day 1 (Oct 18)
 
@@ -321,6 +322,39 @@ cd Days/Day_10/mongo-scratch
 cp .env.example .env        # PowerShell: Copy-Item .env.example .env
 go mod tidy
 go run .
+```
+
+## Day 11 (Oct 29): Task 4 part 1, MongoDB in the Task Manager API
+
+### What I built
+
+- Copied the Task 3 project into `Tasks/Task_4` and replaced the in-memory storage with MongoDB, keeping the same folder structure.
+- `data.Connect`: connects with a timeout and runs `Ping`, so the app exits immediately if the database is unreachable (fail fast).
+- Configuration from environment variables (`MONGO_URI`, `DB_NAME`, `PORT`) with `.env` git-ignored and a `.env.example` committed.
+- Task model with `bson` tags and `primitive.ObjectID` as the `_id`.
+- `GET /tasks` (always returns `[]`, never `null`), `GET /tasks/:id` (400 for an invalid ObjectID, 404 when not found) and `POST /tasks` (the database generates the ID).
+- PUT and DELETE return 501 for now; they come on Day 12.
+
+### What I learned
+
+1. `mongo.Connect` doesn't prove the server is reachable; `Ping` does.
+2. An invalid ObjectID (400) and a missing document (404) are different errors and need different responses.
+3. Putting the ObjectID in the model keeps the API response shape unchanged, so Task 3 clients still work.
+
+### How to run
+
+```bash
+cd Tasks/Task_4
+cp .env.example .env      # set MONGO_URI, DB_NAME, PORT
+go mod tidy
+go run main.go
+```
+
+Then try:
+
+```bash
+curl.exe http://localhost:8000/tasks
+curl.exe -X POST http://localhost:8000/tasks -H "Content-Type: application/json" -d "{\"title\":\"Test\",\"description\":\"d\",\"due_date\":\"2026-11-10T10:00:00Z\",\"status\":\"pending\"}"
 ```
 
 ## Follow along
