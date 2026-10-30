@@ -74,6 +74,7 @@ Go, Gin, MongoDB, PostgreSQL (pgx, pgvector), Redis, Docker and Compose, GitHub 
 | 9   | Oct 27       | MongoDB fundamentals (documents, collections, ObjectID, CRUD, filters)    | [Days/Day_9](Days/Day_9)                                       |
 | 10  | Oct 28, 2026 | MongoDB Go driver: connect, context, CRUD                                 | [Days/Day_10](Days/Day_10)                                     |
 | 11  | Oct 29       | MongoDB in the Task Manager API: connect, GetAll, GetByID, Create         | Tasks/Task_4                                                   |
+| 12  | Oct 30, 2026 | Task 4 finished: update/delete with MongoDB, error handling, config       | Tasks/Task_4                                                   |
 
 ## Day 1 (Oct 18)
 
@@ -356,6 +357,39 @@ Then try:
 curl.exe http://localhost:8000/tasks
 curl.exe -X POST http://localhost:8000/tasks -H "Content-Type: application/json" -d "{\"title\":\"Test\",\"description\":\"d\",\"due_date\":\"2026-11-10T10:00:00Z\",\"status\":\"pending\"}"
 ```
+
+## Day 12 - Oct 30, 2026: Finishing Task 4 (MongoDB persistence)
+
+### What I built
+
+- `UpdateTask` (PUT /tasks/:id) using `UpdateOne` with `$set`; returns the updated task.
+- `DeleteTask` (DELETE /tasks/:id) using `DeleteOne`; returns 200 with `{"message": "task deleted"}`.
+- Separate error handling for each failure type through sentinel errors (`ErrInvalidID`, `ErrNotFound`, `ErrEmptyUpdate`, `ErrTimeout`, `ErrDBUnavailable`) and one `respondError` helper in the controller:
+  - invalid ObjectID or bad body: 400
+  - task not found: 404
+  - database timeout: 504
+  - database unreachable: 503
+  - anything else: 500 with a generic message (details only in server logs)
+- Configuration from environment variables (`MONGO_URI`, `PORT`) with a `.env.example`.
+- Updated `docs/api_documentation.md` with the MongoDB setup, connection settings, error table and a Task 3 to Task 4 change list.
+- Extended the Postman collection with update/delete cases (success, 400, 404, DB down).
+
+### What I learned
+
+1. `MatchedCount` and `ModifiedCount` mean different things. Updating a task with identical values modifies nothing but is still a success, so the 404 check must use `MatchedCount == 0`. For deletes, use `DeletedCount == 0`.
+2. Network errors, database errors and validation errors should be different responses. A DB timeout (504) is not the same as a bad request (400), and driver error details should never reach the client.
+3. Configuration belongs in environment variables (12-factor). Real secrets are never committed; a `.env.example` documents what is needed.
+
+### How to run
+
+1. Start MongoDB (local `mongod` or an Atlas cluster).
+2. Copy `.env.example` to `.env` and set `MONGO_URI` and `PORT`.
+3. From `Tasks/Task_4`:
+   ```bash
+   go mod tidy
+   go run main.go
+   ```
+4. Import the Postman collection, set `baseUrl`, and run the requests in order.
 
 ## Follow along
 
