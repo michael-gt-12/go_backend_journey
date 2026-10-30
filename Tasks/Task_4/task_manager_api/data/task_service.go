@@ -16,8 +16,11 @@ import (
 
 // Sentinel errors so controllers can map them to HTTP status codes.
 var (
-	ErrInvalidID = errors.New("invalid task id")
-	ErrNotFound  = errors.New("task not found")
+	ErrInvalidID     = errors.New("invalid task id")
+	ErrNotFound      = errors.New("task not found")
+	ErrEmptyUpdate   = errors.New("no fields to update")
+	ErrTimeout       = errors.New("database operation timed out")
+	ErrDBUnavailable = errors.New("database unavailable")
 )
 
 const opTimeout = 5 * time.Second
@@ -43,6 +46,23 @@ func Connect(uri, dbName string) (*mongo.Client, error) {
 
 	Collection = client.Database(dbName).Collection("tasks")
 	return client, nil
+}
+
+// wrapDBError classifies a driver error so the controller can tell
+// a timeout or an unreachable database apart from other failures.
+// Other errors are returned unchanged (the controller logs them and
+// answers with a generic 500).
+func wrapDBError(err error) error {
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, context.DeadlineExceeded), mongo.IsTimeout(err):
+		return fmt.Errorf("%w: %v", ErrTimeout, err)
+	case mongo.IsNetworkError(err):
+		return fmt.Errorf("%w: %v", ErrDBUnavailable, err)
+	default:
+		return err
+	}
 }
 
 // GetAllTasks returns every task. It always returns a non-nil slice
@@ -109,4 +129,67 @@ func CreateTask(task models.Task) (models.Task, error) {
 	}
 	task.ID = oid
 	return task, nil
+}
+
+// UpdateTask replaces the editable fields of the task with the given id
+// and returns the updated task.
+// It returns ErrInvalidID for a malformed id and ErrNotFound when
+// MatchedCount is 0 (no document has that id). Any id in the body is ignored.
+func UpdateTask(id string, task models.Task) (models.Task, error) {
+	oid, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return models.Task{}, ErrInvalidID
+	}
+
+	// Build the $set document from the struct using its own bson tags,
+	// then drop _id: MongoDB does not allow changing it.
+	raw, err := bson.Marshal(task)
+	if err != nil {
+		return models.Task{}, err
+	}
+	var fields bson.M
+	if err := bson.Unmarshal(raw, &fields); err != nil {
+		return models.Task{}, err
+	}
+	delete(fields, "_id")
+	if len(fields) == 0 {
+		return models.Task{}, ErrEmptyUpdate
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), opTimeout)
+	defer cancel()
+
+	result, err := Collection.UpdateOne(ctx, bson.M{"_id": oid}, bson.M{"$set": fields})
+	if err != nil {
+		return models.Task{}, wrapDBError(err)
+	}
+	// Use MatchedCount, not ModifiedCount: sending identical values
+	// modifies nothing but is still a successful update.
+	if result.MatchedCount == 0 {
+		return models.Task{}, ErrNotFound
+	}
+
+	return GetTaskByID(id)
+}
+
+// DeleteTask removes the task with the given id.
+// It returns ErrInvalidID for a malformed id and ErrNotFound when
+// DeletedCount is 0 (no document has that id).
+func DeleteTask(id string) error {
+	oid, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return ErrInvalidID
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), opTimeout)
+	defer cancel()
+
+	result, err := Collection.DeleteOne(ctx, bson.M{"_id": oid})
+	if err != nil {
+		return wrapDBError(err)
+	}
+	if result.DeletedCount == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
