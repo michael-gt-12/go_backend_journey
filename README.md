@@ -75,6 +75,7 @@ Go, Gin, MongoDB, PostgreSQL (pgx, pgvector), Redis, Docker and Compose, GitHub 
 | 10  | Oct 28, 2026 | MongoDB Go driver: connect, context, CRUD                                 | [Days/Day_10](Days/Day_10)                                     |
 | 11  | Oct 29       | MongoDB in the Task Manager API: connect, GetAll, GetByID, Create         | Tasks/Task_4                                                   |
 | 12  | Oct 30, 2026 | Task 4 finished: update/delete with MongoDB, error handling, config       | Tasks/Task_4                                                   |
+| 13  | Oct 31       | Authentication vs authorization, bcrypt password hashing, JWT structure   | Days/Day_13                                                    |
 
 ## Day 1 (Oct 18)
 
@@ -390,6 +391,33 @@ curl.exe -X POST http://localhost:8000/tasks -H "Content-Type: application/json"
    go run main.go
    ```
 4. Import the Postman collection, set `baseUrl`, and run the requests in order.
+
+## Day 13 – Authentication, Password Hashing and JWT (Oct 31)
+
+### What I built
+
+- `auth-scratch/main.go`: a scratch program that
+  - hashes and verifies passwords with bcrypt (and shows the same password gives different hashes),
+  - creates an HS256 JWT with custom claims (user ID, username, role) and a 15-minute expiry,
+  - parses and validates the token,
+  - shows three rejected cases: an expired token, a tampered token (role changed to admin) and a token checked with the wrong secret.
+- `docs/auth-notes.md`: notes on authentication vs authorization, password hashing, JWT structure, the secret and token expiry.
+
+### What I learned
+
+1. Authentication (who you are, 401) and authorization (what you can do, 403) are different checks.
+2. bcrypt salts every hash automatically, so the same password produces a different hash each time, and it is slow on purpose.
+3. A JWT is `header.payload.signature`. The payload is readable by anyone, but the signature stops anyone from changing it without the secret.
+
+### How to run
+
+```bash
+cd Days/Day_13/auth-scratch
+go mod tidy
+# PowerShell
+$env:JWT_SECRET="some-long-random-secret-for-testing"
+go run .
+```
 
 ## Follow along
 
