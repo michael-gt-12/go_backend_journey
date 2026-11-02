@@ -76,6 +76,7 @@ Go, Gin, MongoDB, PostgreSQL (pgx, pgvector), Redis, Docker and Compose, GitHub 
 | 11  | Oct 29       | MongoDB in the Task Manager API: connect, GetAll, GetByID, Create         | Tasks/Task_4                                                   |
 | 12  | Oct 30, 2026 | Task 4 finished: update/delete with MongoDB, error handling, config       | Tasks/Task_4                                                   |
 | 13  | Oct 31       | Authentication vs authorization, bcrypt password hashing, JWT structure   | Days/Day_13                                                    |
+| 14  | Nov 2        | Registration & login (Task 5, part 1): bcrypt + JWT                       | Tasks/Task_5                                                   |
 
 ## Day 1 (Oct 18)
 
@@ -417,6 +418,36 @@ go mod tidy
 # PowerShell
 $env:JWT_SECRET="some-long-random-secret-for-testing"
 go run .
+```
+
+## Day 14 - Registration & Login (Task 5, part 1)
+
+### What I built
+
+- User model: ID, Username (unique index in MongoDB), Password (bcrypt hash only), Role (admin/user)
+- `POST /register`: validates username and password, hashes the password with bcrypt, stores the user
+- `POST /login`: verifies credentials and returns a signed JWT
+- Duplicate username returns 409; wrong password returns 401 with a generic message
+- The password hash is never returned in any response
+
+### What I learned
+
+1. Passwords are hashed with bcrypt and never stored in plaintext. Hashing lives in the data layer.
+2. A generic 401 message on login stops attackers from discovering which usernames exist.
+3. A unique index in MongoDB enforces unique usernames, so the check is safe even under concurrent requests.
+
+### How to run
+
+```bash
+cd Tasks/Task_5
+cp .env.example .env   # set MONGO_URI, JWT_SECRET, PORT
+go run main.go
+
+# register
+curl.exe -X POST http://localhost:<PORT>/register -H "Content-Type: application/json" -d "{\"username\":\"michael\",\"password\":\"secret123\"}"
+
+# login
+curl.exe -X POST http://localhost:<PORT>/login -H "Content-Type: application/json" -d "{\"username\":\"michael\",\"password\":\"secret123\"}"
 ```
 
 ## Follow along
