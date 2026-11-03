@@ -77,6 +77,7 @@ Go, Gin, MongoDB, PostgreSQL (pgx, pgvector), Redis, Docker and Compose, GitHub 
 | 12  | Oct 30, 2026 | Task 4 finished: update/delete with MongoDB, error handling, config       | Tasks/Task_4                                                   |
 | 13  | Oct 31       | Authentication vs authorization, bcrypt password hashing, JWT structure   | Days/Day_13                                                    |
 | 14  | Nov 2        | Registration & login (Task 5, part 1): bcrypt + JWT                       | Tasks/Task_5                                                   |
+| 15  | Nov 3, 2026  | Task 5: JWT middleware and role-based access control                      | Days/Day_15                                                    |
 
 ## Day 1 (Oct 18)
 
@@ -449,6 +450,37 @@ curl.exe -X POST http://localhost:<PORT>/register -H "Content-Type: application/
 # login
 curl.exe -X POST http://localhost:<PORT>/login -H "Content-Type: application/json" -d "{\"username\":\"michael\",\"password\":\"secret123\"}"
 ```
+
+## Day 15: JWT Middleware and Role-Based Access (Nov 3, 2026)
+
+**What I built**
+
+- `middleware/auth_middleware.go`: reads the `Authorization: Bearer <token>` header and validates the signature and expiry. It puts the user (ID, username, role) in the Gin context.
+- An admin-only check in the middleware.
+- Access rules:
+  - Any logged-in user can `GET` tasks.
+  - Only admins can `POST`, `PUT` and `DELETE` tasks.
+  - Only admins can call `POST /promote/:id`.
+- Postman tests with and without a token, with the token stored in a variable.
+- Updated `docs/api_documentation.md` with registration, login, protected endpoints and request/response formats.
+
+**What I learned**
+
+1. How Gin middleware works: `c.Next()`, `c.Abort()` and passing data through `c.Set()` / `c.Get()`.
+2. 401 vs 403: 401 means "I don't know who you are" (missing or invalid token), and 403 means "I know who you are, but you can't do this" (wrong role).
+3. Always validate the token's signing method and expiry, and never trust the role from anywhere except the verified claims.
+
+**How to run**
+
+```bash
+cd Tasks/Task_5
+export JWT_SECRET=your_secret   # PowerShell: $env:JWT_SECRET="your_secret"
+go run main.go
+```
+
+1. `POST /register`, then `POST /login` to get a token.
+2. Send the token as `Authorization: Bearer <token>`.
+3. Without a token, protected routes return 401. With a non-admin token, write routes return 403.
 
 ## Follow along
 
