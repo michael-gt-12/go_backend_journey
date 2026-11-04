@@ -78,6 +78,7 @@ Go, Gin, MongoDB, PostgreSQL (pgx, pgvector), Redis, Docker and Compose, GitHub 
 | 13  | Oct 31       | Authentication vs authorization, bcrypt password hashing, JWT structure   | Days/Day_13                                                    |
 | 14  | Nov 2        | Registration & login (Task 5, part 1): bcrypt + JWT                       | Tasks/Task_5                                                   |
 | 15  | Nov 3, 2026  | Task 5: JWT middleware and role-based access control                      | Days/Day_15                                                    |
+| 16  | Nov 4, 2026  | Clean Architecture: layers, dependency rule, Task 5 → Task 6 mapping      | Tasks/Task_6                                                   |
 
 ## Day 1 (Oct 18)
 
@@ -481,6 +482,24 @@ go run main.go
 1. `POST /register`, then `POST /login` to get a token.
 2. Send the token as `Authorization: Bearer <token>`.
 3. Without a token, protected routes return 401. With a non-admin token, write routes return 403.
+
+### Day 16: Clean Architecture planning (Nov 4, 2026)
+
+**What I built**
+
+- Reviewed my Task 5 Task Manager API file by file and mapped every piece to its Clean Architecture layer
+- Wrote `docs/architecture.md` with the target folder structure, the dependency rule, a Task 5 → Task 6 mapping table, and a list of problems in the current design
+
+**What I learned**
+
+- The dependency rule: imports only point inward, so Domain imports nothing and Usecases import only Domain
+- Dependency inversion: usecases define interfaces (like a task repository) and the Mongo code implements them
+- My Task 5 code mixed layers: Mongo queries sat next to business rules, bcrypt ran inside storage code, and the controller generated JWTs
+
+**Where to look**
+`Tasks/Task_6/task_manager_api/docs/architecture.md`
+
+This is a planning day, so there is nothing to run yet. The code refactor starts on Day 17.
 
 ## Follow along
 
