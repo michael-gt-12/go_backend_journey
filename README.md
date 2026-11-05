@@ -79,6 +79,7 @@ Go, Gin, MongoDB, PostgreSQL (pgx, pgvector), Redis, Docker and Compose, GitHub 
 | 14  | Nov 2        | Registration & login (Task 5, part 1): bcrypt + JWT                       | Tasks/Task_5                                                   |
 | 15  | Nov 3, 2026  | Task 5: JWT middleware and role-based access control                      | Days/Day_15                                                    |
 | 16  | Nov 4, 2026  | Clean Architecture: layers, dependency rule, Task 5 → Task 6 mapping      | Tasks/Task_6                                                   |
+| 17  | Nov 5        | Clean Architecture: Domain and Usecases                                   | [Tasks/Task_6/task_manager](Tasks/Task_6/task_manager)         |
 
 ## Day 1 (Oct 18)
 
@@ -500,6 +501,31 @@ go run main.go
 `Tasks/Task_6/task_manager_api/docs/architecture.md`
 
 This is a planning day, so there is nothing to run yet. The code refactor starts on Day 17.
+
+### Day 17: Clean Architecture, Domain and Usecases (Task 6)
+
+**What I built**
+
+- `Domain/domain.go`: the `Task` and `User` entities, role constants and shared domain errors (`ErrNotFound`, `ErrInvalidInput`, `ErrUsernameTaken`, `ErrInvalidCredentials`)
+- `Repositories/task_repository.go` and `user_repository.go`: repository interfaces only (the Mongo implementations come on Day 18)
+- `Usecases/task_usecases.go`: `TaskUsecase` with validation (title, due date, status) and not-found handling
+- `Usecases/user_usecases.go`: `UserUsecase` with register (first user becomes admin), login (same error for wrong password and unknown user) and promote
+- `PasswordService` and `TokenService` interfaces, so hashing and JWT stay out of the business layer
+
+**What I learned**
+
+1. Usecases depend only on interfaces, so they know nothing about Gin or MongoDB.
+2. Domain errors let the controller map a business failure to an HTTP status without the usecase knowing about HTTP.
+3. A missing `go.mod` makes every `module/package` import fail, so `go mod init` comes first.
+
+**How to run**
+
+```
+cd Tasks/Task_6/task_manager
+go build ./Domain/... ./Repositories/... ./Usecases/...
+```
+
+The layers have no `main` yet; Day 18 wires everything together.
 
 ## Follow along
 
