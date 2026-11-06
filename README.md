@@ -61,25 +61,26 @@ Go, Gin, MongoDB, PostgreSQL (pgx, pgvector), Redis, Docker and Compose, GitHub 
 
 ## Progress
 
-| Day | Date         | Topic                                                                     | Code                                                           |
-| --- | ------------ | ------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| 1   | Oct 18       | Environment setup, Go basics, hello-world, FizzBuzz CLI                   | `Days/Day_1`                                                   |
-| 2   | Oct 19       | Structs, methods, interfaces, custom errors, generics                     | `Days/Day_2`                                                   |
-| 3   | Oct 20, 2026 | Task 1 (word frequency, palindromes) + Task 2 skeleton                    | `Tasks/Task_1`, `Tasks/Task_2/library_management`              |
-| 4   | Oct 21, 2026 | Task 2: Console Library Management System (interfaces, maps, errors)      | `Tasks/Task_2/library_management`                              |
-| 5   | Oct 22, 2026 | Gin REST API basics: routing, JSON, handlers, request binding             | [Days/Day_5/gin-albums](Days/Day_5/gin-albums)                 |
-| 6   | Oct 23       | Task 3: Gin project structure, in-memory store with mutex, task endpoints | [Tasks/Task_3/task_manager_api](Tasks/Task_3/task_manager_api) |
-| 7   | Oct 24, 2026 | Task 3: POST/PUT/DELETE endpoints, validation, consistent errors          | Tasks/Task_3/task_manager                                      |
-| 8   | Oct 26       | Postman API documentation, Task 3 finished                                | Tasks/Task_3/                                                  |
-| 9   | Oct 27       | MongoDB fundamentals (documents, collections, ObjectID, CRUD, filters)    | [Days/Day_9](Days/Day_9)                                       |
-| 10  | Oct 28, 2026 | MongoDB Go driver: connect, context, CRUD                                 | [Days/Day_10](Days/Day_10)                                     |
-| 11  | Oct 29       | MongoDB in the Task Manager API: connect, GetAll, GetByID, Create         | Tasks/Task_4                                                   |
-| 12  | Oct 30, 2026 | Task 4 finished: update/delete with MongoDB, error handling, config       | Tasks/Task_4                                                   |
-| 13  | Oct 31       | Authentication vs authorization, bcrypt password hashing, JWT structure   | Days/Day_13                                                    |
-| 14  | Nov 2        | Registration & login (Task 5, part 1): bcrypt + JWT                       | Tasks/Task_5                                                   |
-| 15  | Nov 3, 2026  | Task 5: JWT middleware and role-based access control                      | Days/Day_15                                                    |
-| 16  | Nov 4, 2026  | Clean Architecture: layers, dependency rule, Task 5 → Task 6 mapping      | Tasks/Task_6                                                   |
-| 17  | Nov 5        | Clean Architecture: Domain and Usecases                                   | [Tasks/Task_6/task_manager](Tasks/Task_6/task_manager)         |
+| Day    | Date         | Topic                                                                                              | Code                                                           |
+| ------ | ------------ | -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| 1      | Oct 18       | Environment setup, Go basics, hello-world, FizzBuzz CLI                                            | `Days/Day_1`                                                   |
+| 2      | Oct 19       | Structs, methods, interfaces, custom errors, generics                                              | `Days/Day_2`                                                   |
+| 3      | Oct 20, 2026 | Task 1 (word frequency, palindromes) + Task 2 skeleton                                             | `Tasks/Task_1`, `Tasks/Task_2/library_management`              |
+| 4      | Oct 21, 2026 | Task 2: Console Library Management System (interfaces, maps, errors)                               | `Tasks/Task_2/library_management`                              |
+| 5      | Oct 22, 2026 | Gin REST API basics: routing, JSON, handlers, request binding                                      | [Days/Day_5/gin-albums](Days/Day_5/gin-albums)                 |
+| 6      | Oct 23       | Task 3: Gin project structure, in-memory store with mutex, task endpoints                          | [Tasks/Task_3/task_manager_api](Tasks/Task_3/task_manager_api) |
+| 7      | Oct 24, 2026 | Task 3: POST/PUT/DELETE endpoints, validation, consistent errors                                   | Tasks/Task_3/task_manager                                      |
+| 8      | Oct 26       | Postman API documentation, Task 3 finished                                                         | Tasks/Task_3/                                                  |
+| 9      | Oct 27       | MongoDB fundamentals (documents, collections, ObjectID, CRUD, filters)                             | [Days/Day_9](Days/Day_9)                                       |
+| 10     | Oct 28, 2026 | MongoDB Go driver: connect, context, CRUD                                                          | [Days/Day_10](Days/Day_10)                                     |
+| 11     | Oct 29       | MongoDB in the Task Manager API: connect, GetAll, GetByID, Create                                  | Tasks/Task_4                                                   |
+| 12     | Oct 30, 2026 | Task 4 finished: update/delete with MongoDB, error handling, config                                | Tasks/Task_4                                                   |
+| 13     | Oct 31       | Authentication vs authorization, bcrypt password hashing, JWT structure                            | Days/Day_13                                                    |
+| 14     | Nov 2        | Registration & login (Task 5, part 1): bcrypt + JWT                                                | Tasks/Task_5                                                   |
+| 15     | Nov 3, 2026  | Task 5: JWT middleware and role-based access control                                               | Days/Day_15                                                    |
+| 16     | Nov 4, 2026  | Clean Architecture: layers, dependency rule, Task 5 → Task 6 mapping                               | Tasks/Task_6                                                   |
+| 17     | Nov 5        | Clean Architecture: Domain and Usecases                                                            | [Tasks/Task_6/task_manager](Tasks/Task_6/task_manager)         |
+| Day 18 | Nov 6        | Task 6 part 2: Clean Architecture, repositories, infrastructure and delivery layers with manual DI | [Tasks/Task_6/task_manager](Tasks/Task_6/task_manager)         |
 
 ## Day 1 (Oct 18)
 
@@ -526,6 +527,32 @@ go build ./Domain/... ./Repositories/... ./Usecases/...
 ```
 
 The layers have no `main` yet; Day 18 wires everything together.
+
+## Day 18 - Clean Architecture: repositories, infrastructure and delivery (Task 6, part 2)
+
+**What I built**
+
+- Mongo implementations of `TaskRepository` and `UserRepository`, each in the same file as its interface (`Repositories/`), with a `taskDoc`/`userDoc` mapping so bson details stay out of `Domain`.
+- A unique index on `username` and mapping of duplicate-key errors to `Domain.ErrUsernameTaken`.
+- Infrastructure services: `password_service.go` (bcrypt), `jwt_service.go` (HS256 token generation and validation with user ID, username and role claims) and `auth_middleWare.go` (Bearer token check and an admin-only guard).
+- Delivery layer: `controllers/controller.go` calls only the usecase interfaces and maps domain errors to HTTP status codes, `routers/router.go` sets up public, logged-in and admin-only routes, and `main.go` wires everything by hand.
+
+**What I learned**
+
+- Manual dependency injection: `main.go` is the only place that knows the concrete types. It builds repositories, then usecases, then the controller, then the router.
+- Defining `PasswordService` and `TokenService` interfaces in the usecase layer lets Infrastructure implement them without Usecases importing Infrastructure.
+- Keeping `bson` and `ObjectID` inside the repository layer keeps `Domain` and `Usecases` free of framework imports.
+
+**How to run**
+
+```bash
+cd Tasks/Task_6/task_manager
+cp .env.example .env        # set MONGO_URI, MONGO_DB, PORT, JWT_SECRET
+go mod tidy
+go run ./Delivery
+```
+
+Routes: `POST /register`, `POST /login`, `GET /tasks`, `GET /tasks/:id`, and admin-only `POST /tasks`, `PUT /tasks/:id`, `DELETE /tasks/:id`, `POST /promote/:id`.
 
 ## Follow along
 
