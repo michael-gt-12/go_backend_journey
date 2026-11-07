@@ -1,84 +1,136 @@
-# Task 6: Clean Architecture Refactor Plan
+# Task Manager API: Clean Architecture
 
-Task 5 works, but the layers are mixed together. This document records how it is split in Task 6.
-The API behaviour (routes, status codes, JSON) does not change.
+Task 5 worked, but HTTP, business rules, MongoDB, bcrypt and JWT were mixed together. Task 6 splits them into layers.
+**The API behaviour (routes, status codes, JSON) is unchanged.** The Task 5 Postman collection passes as before.
 
-## The dependency rule
+## 1. The dependency rule
 
-Imports only point inward:
+Imports only point inward, toward Domain:
 
-    Delivery  ->  Usecases  ->  Domain
-    Repositories  ->  Domain          (implement interfaces Domain defines)
-    Infrastructure  ->  Domain        (implement interfaces Domain defines)
+```
+            +-------------------------------+
+            |           Delivery            |  Gin controllers, router, main.go
+            +---------------+---------------+
+                            |
+                            v
+            +-------------------------------+
+            |           Usecases            |  business rules
+            +---------------+---------------+
+                            |
+                            v
+            +-------------------------------+
+            |            Domain             |  entities, errors, interfaces
+            +-------------------------------+
+                   ^                ^
+                   |                |
+        +----------+------+  +------+-----------+
+        |  Repositories   |  |  Infrastructure  |
+        |  (MongoDB)      |  |  (bcrypt, JWT,   |
+        |                 |  |   middleware)    |
+        +-----------------+  +------------------+
+```
 
-- **Domain** imports nothing from this project (and no Gin, Mongo, bcrypt or JWT).
-- **Usecases** import only Domain. They talk to the database and to bcrypt/JWT through interfaces.
-- **Repositories / Infrastructure** contain the real tools (MongoDB, bcrypt, JWT) and satisfy those interfaces.
-- **Delivery** (Gin) turns HTTP into usecase calls. `main.go` creates everything and wires it together.
+| Layer          | May import                                     | Must NOT import                                       |
+| -------------- | ---------------------------------------------- | ----------------------------------------------------- |
+| Domain         | standard library only                          | any other project package, Gin, Mongo, bcrypt, JWT    |
+| Usecases       | Domain                                         | Gin, Mongo, bcrypt, JWT, Repositories, Infrastructure |
+| Repositories   | Domain, Mongo driver                           | Usecases, Delivery, Gin                               |
+| Infrastructure | Domain, bcrypt, JWT, Gin (middleware only)     | Usecases, Repositories                                |
+| Delivery       | Usecases, Domain, Infrastructure (wiring only) | Mongo driver                                          |
 
-Why: business rules stay testable without a database (Day 20) and the database can be replaced without touching them.
+`Delivery/main.go` is the only place that knows every concrete type. It builds the pieces and passes them in.
 
-## Target structure
+**Why:** business rules can be tested without a database (Task 7 mocks), and the database, hashing library or web framework can be swapped without touching them.
 
-    task_manager_api/
-      Delivery/
-        main.go
-        controllers/controller.go
-        routers/router.go
-      Domain/domain.go
-      Infrastructure/
-        auth_middleWare.go
-        jwt_service.go
-        password_service.go
-      Repositories/
-        task_repository.go
-        user_repository.go
-      Usecases/
-        task_usecases.go
-        user_usecases.go
+## 2. Folder structure
 
-## Where every Task 5 piece goes
+```
+task_manager/
+  Delivery/
+    main.go                    # config, wiring (manual dependency injection), server start
+    controllers/controller.go  # HTTP -> usecase calls, error -> status code mapping
+    routers/router.go          # routes; receives controller + middleware as parameters
+  Domain/
+    domain.go                  # Task, User, Role, Credentials, domain errors, interfaces
+  Infrastructure/
+    auth_middleWare.go         # AuthRequired, AdminOnly (uses JWTService)
+    jwt_service.go             # generates and validates tokens
+    password_service.go        # bcrypt hash and compare
+  Repositories/
+    task_repository.go         # TaskRepository: MongoDB implementation
+    user_repository.go         # UserRepository: MongoDB implementation
+  Usecases/
+    task_usecases.go           # TaskUsecase
+    user_usecases.go           # UserUsecase
+  docs/
+    architecture.md            # this file
+    api_documentation.md
+```
 
-| Task 5 file / function | New place | Notes |
-|---|---|---|
-| `models/task.go` Task struct | Domain/domain.go | ID becomes `string`; no mongo import. Repository converts to/from an internal bson struct |
-| `models/user.go` User, Role consts | Domain/domain.go | Same ID change. Keep `json:"-"` on Password |
-| `models/user.go` Credentials | Domain/domain.go (or a DTO in controller) | Keep `binding` tags for Gin validation |
-| `data/*.go` sentinel errors (ErrNotFound, ErrInvalidID, ErrUsernameTaken, ...) | Domain/domain.go | Everyone can use them, they depend on nothing |
-| New: TaskRepository, UserRepository, PasswordService, JWTService interfaces | Domain/domain.go | The contracts for dependency inversion |
-| `data.Connect` | Delivery/main.go (+ small helper) | Connection setup is wiring, not business logic |
-| `data.EnsureUserIndexes` | Repositories/user_repository.go (constructor) | Index belongs to the Mongo implementation |
-| `data.GetAllTasks`, `GetTaskByID`, `CreateTask`, `UpdateTask`, `DeleteTask` (Mongo calls) | Repositories/task_repository.go | Only queries and bson. Return domain errors |
-| ObjectID parsing -> ErrInvalidID | Repositories/task_repository.go | It is a Mongo detail |
-| "empty update" check | Usecases/task_usecases.go | Business rule |
-| `data.wrapDBError` | Repositories | Maps driver errors to domain errors |
-| `data.Register` hashing + first user becomes admin | Usecases/user_usecases.go | Rule lives here, hashing via PasswordService, storage via UserRepository |
-| `data.Register` CountDocuments / InsertOne, duplicate key | Repositories/user_repository.go | Add `Count()` and `Create()` |
-| `data.Authenticate` password check + dummyHash | Usecases (flow) + Infrastructure/password_service.go (bcrypt) | Same error for unknown user and wrong password |
-| `data.Authenticate` FindOne | Repositories/user_repository.go | `GetByUsername()` |
-| `data.PromoteUser` | Usecases (rule) + Repositories (UpdateOne) | `Promote(id)` |
-| `middleware.GenerateToken`, `parseToken`, Claims, TokenLifetime | Infrastructure/jwt_service.go | Struct holding the secret, no global `Init` |
-| `middleware.AuthRequired`, `AdminOnly` | Infrastructure/auth_middleWare.go | Uses JWTService; no business logic |
-| `controllers.respondError` | Delivery/controllers/controller.go | Same status mapping, now over Domain errors |
-| `controllers.Register/Login/Promote/*Task` | Delivery/controllers/controller.go | Call usecases only. `Login` no longer generates the token itself; the usecase does |
-| `router.SetupRouter` | Delivery/routers/router.go | Receives the controller and middleware as parameters |
-| `main.go` env loading and startup | Delivery/main.go | Builds repos -> usecases -> controller -> router |
+## 3. How a request flows
 
-## Problems in Task 5 this refactor fixes
+Example: `POST /tasks` (admin creates a task)
 
-1. `models` imports `go.mongodb.org/.../primitive` and carries bson tags, so the core entity depends on the database.
-2. `data/` mixes Mongo queries with business rules (first user is admin, empty-update check).
-3. `data/user_service.go` does bcrypt hashing directly inside the storage code.
-4. Global state: `data.Collection`, `data.UsersCollection`, `middleware.jwtSecret` with `Init`. Replace with structs created in `main` and passed in.
-5. The controller calls `middleware.GenerateToken`, so a controller knows how tokens are built. That belongs in a usecase using JWTService.
-6. Errors live in `data`, so the controller imports the storage package just to read them. Move them to Domain.
-7. Functions use `context.Background()`. Pass `c.Request.Context()` down so cancelled requests stop their DB calls.
-8. `.gitignore` ignores `go.sum`. Commit it so builds are reproducible.
+1. **router** matches the route and runs `AuthRequired` then `AdminOnly` (Infrastructure, via `JWTService`).
+2. **controller** binds and validates the JSON body, then calls `TaskUsecase.Create(ctx, task)`.
+3. **usecase** applies the business rules and calls `TaskRepository.Create(ctx, task)` (an interface).
+4. **repository** converts the task to a bson struct, runs the Mongo insert and returns a domain `Task` or a domain error.
+5. **controller** maps the result or error to a status code (201, 400, 404, 500) and writes the JSON.
 
-## Build order
+The usecase never sees HTTP, and the controller never sees MongoDB.
 
-1. Domain (entities, errors, interfaces)
-2. Usecases (tests with fake repositories come in Task 7)
-3. Repositories and Infrastructure
-4. Delivery (controllers, router, main)
-5. Run the Task 5 Postman collection: every response must match the old one.
+## 4. Where each Task 5 piece went
+
+| Task 5                                       | Task 6                             | Note                                                         |
+| -------------------------------------------- | ---------------------------------- | ------------------------------------------------------------ |
+| `models/task.go`, `models/user.go`           | Domain/domain.go                   | ID is now `string`; no Mongo import                          |
+| sentinel errors in `data/`                   | Domain/domain.go                   | shared by every layer                                        |
+| `data/*` Mongo queries                       | Repositories/                      | only queries and bson; driver errors mapped to domain errors |
+| ObjectID parsing -> `ErrInvalidID`           | Repositories/task_repository.go    | a Mongo detail                                               |
+| first user becomes admin, empty-update check | Usecases/                          | business rules                                               |
+| bcrypt hashing                               | Infrastructure/password_service.go | used through `PasswordService`                               |
+| token creation and parsing                   | Infrastructure/jwt_service.go      | struct holding the secret, no globals                        |
+| `AuthRequired`, `AdminOnly`                  | Infrastructure/auth_middleWare.go  | no business logic                                            |
+| controllers, router                          | Delivery/                          | controller calls usecases only                               |
+| startup and env loading                      | Delivery/main.go                   | repos -> usecases -> controller -> router                    |
+
+## 5. Design decisions
+
+1. **Interfaces are defined in Domain**, and implemented in Repositories and Infrastructure (dependency inversion). Usecases depend on `TaskRepository`, `UserRepository`, `PasswordService` and `JWTService`, never on concrete tools.
+2. **ID is a `string` in Domain.** The Mongo repository converts to and from `ObjectID` internally, so the entity does not depend on the database.
+3. **Domain errors live in Domain.** The repository maps driver errors to them, and the controller maps them to HTTP status codes. Nobody imports a storage package just to read an error.
+4. **No global state.** The collection handles and the JWT secret now live in structs created in `main` and passed in. This replaces `data.Collection`, `data.UsersCollection` and `middleware.jwtSecret`.
+5. **The usecase builds the token** (through `JWTService`), so the controller does not know how tokens are made.
+6. **`context.Context` is passed down** from `c.Request.Context()`, so a cancelled request stops its database calls.
+7. **Manual constructor injection** in `main.go`, with no DI framework. It is explicit and easy to read.
+8. **Same error for unknown user and wrong password** at login, so the API does not reveal which usernames exist.
+9. **`go.sum` is committed** so builds are reproducible.
+
+## 6. Problems in Task 5 this refactor fixed
+
+1. `models` imported the Mongo `primitive` package and carried bson tags.
+2. `data/` mixed Mongo queries with business rules.
+3. bcrypt was called directly inside the storage code.
+4. Global mutable state (`Collection`, `UsersCollection`, `jwtSecret`).
+5. The controller knew how tokens were generated.
+6. The controller imported the storage package to read errors.
+7. Functions used `context.Background()`, so requests could not cancel DB work.
+8. `go.sum` was git-ignored.
+
+## 7. How to add a new feature
+
+Example: add a `Comment` on a task.
+
+1. **Domain:** add the `Comment` struct, any new errors, and a `CommentRepository` interface.
+2. **Usecases:** add `comment_usecases.go` with a `CommentUsecase` interface and implementation. It depends only on `CommentRepository` and the existing Domain types.
+3. **Repositories:** add `comment_repository.go` that implements `CommentRepository` with Mongo.
+4. **Delivery:** add handlers to the controller that call `CommentUsecase`, map errors to status codes, and register the routes in `router.go`.
+5. **Wire it** in `Delivery/main.go`: repository -> usecase -> controller.
+6. **Check the rule:** `grep -r "gin-gonic\|mongo-driver\|bcrypt\|golang-jwt" Domain Usecases` must print nothing.
+7. **Document** the new endpoints in `docs/api_documentation.md`.
+
+## 8. Testing
+
+- `Infrastructure/password_service_test.go` and `jwt_service_test.go` cover the critical security components (valid, wrong, expired and tampered cases).
+- Task 7 adds Testify suites for the usecases and controllers, with mocks of the four interfaces.
+- Regression: the Task 5 Postman collection runs against this version with identical results.
