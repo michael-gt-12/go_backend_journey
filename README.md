@@ -81,6 +81,7 @@ Go, Gin, MongoDB, PostgreSQL (pgx, pgvector), Redis, Docker and Compose, GitHub 
 | 16     | Nov 4, 2026  | Clean Architecture: layers, dependency rule, Task 5 → Task 6 mapping                               | Tasks/Task_6                                                   |
 | 17     | Nov 5        | Clean Architecture: Domain and Usecases                                                            | [Tasks/Task_6/task_manager](Tasks/Task_6/task_manager)         |
 | Day 18 | Nov 6        | Task 6 part 2: Clean Architecture, repositories, infrastructure and delivery layers with manual DI | [Tasks/Task_6/task_manager](Tasks/Task_6/task_manager)         |
+| 19     | Sat Nov 7    | Task 6 wrap-up: regression check, architecture docs, service tests                                 | Tasks/Task_6/task_manager                                      |
 
 ## Day 1 (Oct 18)
 
@@ -553,6 +554,26 @@ go run ./Delivery
 ```
 
 Routes: `POST /register`, `POST /login`, `GET /tasks`, `GET /tasks/:id`, and admin-only `POST /tasks`, `PUT /tasks/:id`, `DELETE /tasks/:id`, `POST /promote/:id`.
+
+### Day 19: Task 6 wrap-up (Sat Nov 7)
+
+**What I built**
+
+- Final `docs/architecture.md`: layer diagram, dependency rule, folder tree, request flow, design decisions, and a guide for adding a feature
+- Unit tests for `password_service` (hash, verify, wrong password, salting) and `jwt_service` (valid, expired, tampered, wrong secret)
+- Re-ran the Task 5 Postman collection against the refactored API to confirm identical behaviour
+- Tagged `v0.3`
+
+**What I learned**
+
+- The dependency rule: Domain imports nothing, and Usecases depend only on interfaces
+- Moving the interfaces into Domain is what lets the database, bcrypt and JWT be swapped without touching business rules
+- A refactor is only proven when the old tests pass unchanged
+
+**How to run**
+cd Tasks/Task_6/task_manager
+go test ./Infrastructure/...
+go run ./Delivery
 
 ## Follow along
 
