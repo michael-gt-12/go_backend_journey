@@ -82,6 +82,7 @@ Go, Gin, MongoDB, PostgreSQL (pgx, pgvector), Redis, Docker and Compose, GitHub 
 | 17     | Nov 5        | Clean Architecture: Domain and Usecases                                                            | [Tasks/Task_6/task_manager](Tasks/Task_6/task_manager)         |
 | Day 18 | Nov 6        | Task 6 part 2: Clean Architecture, repositories, infrastructure and delivery layers with manual DI | [Tasks/Task_6/task_manager](Tasks/Task_6/task_manager)         |
 | 19     | Sat Nov 7    | Task 6 wrap-up: regression check, architecture docs, service tests                                 | Tasks/Task_6/task_manager                                      |
+| 20     | Nov 9        | Testify (assert/require, table-driven tests, suites, mocks) + generating mocks with mockery        | [Days/Day_20](Days/Day_20)                                     |
 
 ## Day 1 (Oct 18)
 
@@ -574,6 +575,43 @@ Routes: `POST /register`, `POST /login`, `GET /tasks`, `GET /tasks/:id`, and adm
 cd Tasks/Task_6/task_manager
 go test ./Infrastructure/...
 go run ./Delivery
+
+## Day 20 - Testify and Mockery (Mon, Nov 9)
+
+### What I built
+
+- Scratch exercises in `Days/Day_20` covering:
+  - `assert` vs `require` on a small `Divide` function
+  - a table-driven test using `t.Run`
+  - a suite that embeds `suite.Suite` and uses `SetupTest`
+  - a mocked `TaskRepository` with `mock.On(...).Return(...)` and `AssertExpectations`
+- The four mocks for Task 7, generated with mockery into `Tasks/Task_7/task_manager/Mocks/`:
+  - `TaskRepositoryMock.go`
+  - `UserRepositoryMock.go`
+  - `TaskUsecaseMock.go`
+  - `UserUsecaseMock.go`
+- Confirmed the layers talk only through the four interfaces, and that `go build ./...` passes with the mocks.
+
+### What I learned
+
+1. `require` stops the test on failure and `assert` keeps going, so I use `require` for preconditions like `err` checks and `assert` for independent checks.
+2. A suite with `SetupTest` gives every test fresh mocks, and `AssertExpectations` catches the case where the code never calls the dependency it should.
+3. Mockery generates mocks from interfaces, so after an interface changes I regenerate the mock instead of editing it by hand.
+
+### How to run
+
+\`\`\`bash
+
+# scratch exercises
+
+cd Days/Day_20
+go test -v ./...
+
+# regenerate a mock (example)
+
+cd Tasks/Task_7/task_manager
+mockery --name=TaskRepository --dir=Repositories --output=Mocks --outpkg=Mocks --filename=TaskRepositoryMock.go --structname=TaskRepositoryMock
+\`\`\`
 
 ## Follow along
 
