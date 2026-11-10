@@ -83,6 +83,7 @@ Go, Gin, MongoDB, PostgreSQL (pgx, pgvector), Redis, Docker and Compose, GitHub 
 | Day 18 | Nov 6        | Task 6 part 2: Clean Architecture, repositories, infrastructure and delivery layers with manual DI | [Tasks/Task_6/task_manager](Tasks/Task_6/task_manager)         |
 | 19     | Sat Nov 7    | Task 6 wrap-up: regression check, architecture docs, service tests                                 | Tasks/Task_6/task_manager                                      |
 | 20     | Nov 9        | Testify (assert/require, table-driven tests, suites, mocks) + generating mocks with mockery        | [Days/Day_20](Days/Day_20)                                     |
+| 21     | Nov 10       | Unit-testing usecases with Testify suites and mocks                                                | Tasks/Task_7/task_manager                                      |
 
 ## Day 1 (Oct 18)
 
@@ -612,6 +613,25 @@ go test -v ./...
 cd Tasks/Task_7/task_manager
 mockery --name=TaskRepository --dir=Repositories --output=Mocks --outpkg=Mocks --filename=TaskRepositoryMock.go --structname=TaskRepositoryMock
 \`\`\`
+
+### Day 21 (Nov 10): Unit-testing usecases with Testify suites
+
+**What I built**
+
+- Usecases/task_usecases_test.go: a suite covering GetAllTasks, GetTaskByID, CreateTask, UpdateTask and DeleteTask
+- Usecases/user_usecases_test.go: a suite covering Register, Login and Promote
+- 32 table-driven subtests with mocked repositories (no database), at 98.3% coverage
+
+**What I learned**
+
+1. A suite's SetupTest gives every test fresh mocks, so no state leaks between cases.
+2. A mock panics on any unexpected call, so a passing "rejected" case proves the repository was never touched.
+3. Because usecases depend only on interfaces, I can test every failure path (not found, duplicate username, wrong password, hashing and token errors) in milliseconds.
+
+**How to run**
+cd Tasks/Task_7/task_manager
+go test ./Usecases -v
+go test ./Usecases -cover
 
 ## Follow along
 
