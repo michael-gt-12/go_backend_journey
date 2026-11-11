@@ -84,6 +84,7 @@ Go, Gin, MongoDB, PostgreSQL (pgx, pgvector), Redis, Docker and Compose, GitHub 
 | 19     | Sat Nov 7    | Task 6 wrap-up: regression check, architecture docs, service tests                                 | Tasks/Task_6/task_manager                                      |
 | 20     | Nov 9        | Testify (assert/require, table-driven tests, suites, mocks) + generating mocks with mockery        | [Days/Day_20](Days/Day_20)                                     |
 | 21     | Nov 10       | Unit-testing usecases with Testify suites and mocks                                                | Tasks/Task_7/task_manager                                      |
+| 22     | Nov 11       | Controller tests with mocked usecases + httptest (Task 7 complete)                                 | Tasks/Task_7/task_manager                                      |
 
 ## Day 1 (Oct 18)
 
@@ -632,6 +633,26 @@ mockery --name=TaskRepository --dir=Repositories --output=Mocks --outpkg=Mocks -
 cd Tasks/Task_7/task_manager
 go test ./Usecases -v
 go test ./Usecases -cover
+
+### Day 22 – Nov 11: Testing controllers with mocked usecases
+
+**What I built**
+
+- Delivery/controllers/controller_test.go: a Testify suite that injects TaskUsecaseMock and UserUsecaseMock into the controllers and sends requests through the real Gin router (with the real JWT middleware) using httptest.
+- 36 table-driven subtests covering success, invalid JSON/input (400), unauthorized (401), forbidden (403), conflict (409) and usecase errors mapped to 404/500.
+- Every test checks the parsed request, the usecase call and its arguments, and the status code, and finishes with AssertExpectations.
+- GitHub Actions workflow that runs go vet and go test -race on every push.
+
+**What I learned**
+
+1. httptest lets me test HTTP handlers without a real server or database.
+2. Because controllers depend only on usecase interfaces, mocks make the tests fast and isolated: Clean Architecture paying off.
+3. Testing through the real router also tests the middleware, so 401 and 403 are verified end to end.
+
+**How to run**
+cd Tasks/Task_7/task_manager
+go test ./...
+go test -cover ./... # controllers 100%, usecases 98.3%
 
 ## Follow along
 
