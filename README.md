@@ -87,6 +87,7 @@ Go, Gin, MongoDB, PostgreSQL (pgx, pgvector), Redis, Docker and Compose, GitHub 
 | 20  | Nov 9        | Testify (assert/require, table-driven tests, suites, mocks) + generating mocks with mockery        | [Days/Day_20](Days/Day_20)                                     |
 | 21  | Nov 10       | Unit-testing usecases with Testify suites and mocks                                                | Tasks/Task_7/task_manager                                      |
 | 22  | Nov 11       | Controller tests with mocked usecases + httptest (Task 7 complete)                                 | Tasks/Task_7/task_manager                                      |
+| 23  | Nov 12       | Concurrency Lab 1: goroutines, channels, select, WaitGroup, Mutex, race detector                   | [Days/Day_23](Days/Day_23)                                     |
 
 ## Day 1 (Oct 18)
 
@@ -655,6 +656,43 @@ go test ./Usecases -cover
 cd Tasks/Task_7/task_manager
 go test ./...
 go test -cover ./... # controllers 100%, usecases 98.3%
+
+## Day 23: Concurrency Lab 1 (Nov 12)
+
+### What I built
+
+A `concurrency-lab` module with four small programs and a notes file:
+
+- `fetch`: 5 URLs fetched sequentially (4.494s), concurrently with a `sync.WaitGroup` (1.164s) and through a results channel (1.163s)
+- `prodcons`: producer/consumer over unbuffered and buffered channels
+- `race` and `race-fixed`: 1000 goroutines incrementing one counter; the buggy version lost increments (982, 972, 973, 995, 991 instead of 1000) and `go run -race` reported the data race; the Mutex version always gives 1000 with no warning
+- `selecttimeout`: `select` with `time.After` so a slow job times out instead of blocking forever
+- `notes.md`: channels vs mutexes, data races, goroutine leaks, buffered vs unbuffered channels, who closes a channel
+
+### What I learned
+
+- Concurrent time is about the slowest task, sequential time is the sum of all tasks
+- `counter++` is read, add, write, so two goroutines can overwrite each other; the race detector points at the exact lines
+- Unbuffered channels make sender and receiver meet at every handoff; buffered channels let the producer run ahead until the buffer is full (backpressure)
+- Only the sender closes a channel, and a goroutine blocked forever on a send is a leak
+
+### How to run
+
+```bash
+cd Days/Day_23/concurrency-lab
+go run ./fetch
+go run ./prodcons
+go run ./selecttimeout
+go run ./race        # prints a wrong total
+go run ./race-fixed  # always 1000
+```
+
+The race detector needs cgo and a C compiler. On my Windows machine I run it in Docker (Docker Desktop must be running):
+
+```bash
+docker run --rm -v "${PWD}:/app" -w /app golang:latest go run -race ./race
+docker run --rm -v "${PWD}:/app" -w /app golang:latest go run -race ./race-fixed
+```
 
 ## Follow along
 
