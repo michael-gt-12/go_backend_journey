@@ -88,6 +88,7 @@ Go, Gin, MongoDB, PostgreSQL (pgx, pgvector), Redis, Docker and Compose, GitHub 
 | 21  | Nov 10       | Unit-testing usecases with Testify suites and mocks                                                | Tasks/Task_7/task_manager                                      |
 | 22  | Nov 11       | Controller tests with mocked usecases + httptest (Task 7 complete)                                 | Tasks/Task_7/task_manager                                      |
 | 23  | Nov 12       | Concurrency Lab 1: goroutines, channels, select, WaitGroup, Mutex, race detector                   | [Days/Day_23](Days/Day_23)                                     |
+| 24  | Nov 13       | Worker pools, context cancellation/timeouts, time.Ticker, goleak (concurrency lab 2)               | [Days/Day_24/concurrency-lab-2](Days/Day_24/concurrency-lab-2) |
 
 ## Day 1 (Oct 18)
 
@@ -693,6 +694,37 @@ The race detector needs cgo and a C compiler. On my Windows machine I run it in 
 docker run --rm -v "${PWD}:/app" -w /app golang:latest go run -race ./race
 docker run --rm -v "${PWD}:/app" -w /app golang:latest go run -race ./race-fixed
 ```
+
+## Day 24 - Concurrency lab 2: worker pools, context and tickers
+
+**What I built**
+
+- `workerpool`: 5 workers processing 20 jobs through buffered channels, with a `WaitGroup` closing the results channel.
+- `ctxcancel`: workers that stop on `context` cancel, with a per-job `context.WithTimeout`.
+- `ticker`: a `time.Ticker` producer that enqueues a job every second until the context ends.
+- `leak`: a pool tested with `goleak`, plus a deliberate leak that goleak catches.
+
+**What I learned**
+
+1. Only the sender closes a channel, and `results` can only be closed after every worker is done.
+2. Cancelling a context does nothing unless each goroutine checks `ctx.Done()` in a `select`. When two cases are ready, Go picks one at random.
+3. Every goroutine needs a way to stop. goleak proves that none are left behind.
+
+**How to run**
+
+```bash
+cd Days/Day_24/concurrency-lab-2
+go run ./workerpool
+go run ./ctxcancel
+go run ./ticker
+go test ./leak -v
+# see goleak fail on purpose (PowerShell)
+$env:LEAK_DEMO="1"; go test ./leak -run TestDeliberateLeak -v
+# race detector via Docker (Docker Desktop must be running)
+docker run --rm -v "${PWD}:/app" -w /app golang:latest go test -race ./leak -v
+```
+
+Notes: [notes.md](Days/Day_24/concurrency-lab-2/notes.md)
 
 ## Follow along
 
