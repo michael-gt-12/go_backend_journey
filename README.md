@@ -90,6 +90,7 @@ Go, Gin, MongoDB, PostgreSQL (pgx, pgvector), Redis, Docker and Compose, GitHub 
 | 23  | Nov 12       | Concurrency Lab 1: goroutines, channels, select, WaitGroup, Mutex, race detector                       | [Days/Day_23](Days/Day_23)                                     |
 | 24  | Nov 13       | Worker pools, context cancellation/timeouts, time.Ticker, goleak (concurrency lab 2)                   | [Days/Day_24/concurrency-lab-2](Days/Day_24/concurrency-lab-2) |
 | 25  | Sat Nov 14   | Task 8 part 1: reminders in Clean Architecture (ReminderStatus, atomic claim, Notifier, retry usecase) | [Tasks/Task_8/task_manager](Tasks/Task_8/task_manager)         |
+| 26  | Nov 16       | Task 8 part 2: reminder scheduler + worker pool                                                        | Tasks/Task_8/task_manager                                      |
 
 ## Day 1 (Oct 18)
 
@@ -753,6 +754,32 @@ go test ./Usecases/... -v
 ```
 
 Usecases coverage is 95.1% and controllers coverage is 100%.
+
+## Day 26 (Nov 16): Task 8 part 2, scheduler + worker pool
+
+**What I built**
+
+- `Delivery/workers/scheduler.go`: a `Scheduler` that runs a `time.Ticker`, ticks once immediately, claims due tasks through the reminder usecase and sends them into a buffered `jobs` channel. If the channel is full it waits for space or for context cancellation. It is the only sender, so it closes the channel exactly once when `Run` returns.
+- `Delivery/workers/worker_pool.go`: a `WorkerPool` with N goroutines that `range` over the jobs channel and call `Deliver`. Each job gets its own context from `context.Background()` with a timeout, not from the shutdown context, so an in-flight job can finish during shutdown.
+- `Delivery/config.go`: validated env config with defaults: `REMINDER_INTERVAL` (30s), `REMINDER_WINDOW` (10m), `REMINDER_WORKERS` (3), `REMINDER_QUEUE_SIZE` (100). Invalid values stop the app at startup with a clear message.
+- `Delivery/main.go`: wires the notifier, reminder usecase, jobs channel, scheduler and pool. Graceful shutdown comes on Day 27.
+
+**What I learned**
+
+- The channel's sender should be the one to close it. Closing from a worker would panic if the scheduler sent again.
+- Worker job contexts must not derive from the shutdown context, or Ctrl+C would cancel the delivery already in progress.
+- The atomic claim (pending to queued) in the repository is what stops the same reminder being sent twice, even when ticks overlap.
+- Overdue tasks are included in the claim, so reminders are not lost if the app was down.
+
+**How to run**
+
+```powershell
+cd Tasks\Task_8\task_manager
+$env:REMINDER_INTERVAL="5s"; $env:REMINDER_WINDOW="3m"; $env:REMINDER_WORKERS="3"
+go run ./Delivery
+```
+
+Create tasks due in about 2 minutes through `POST /tasks` (admin token). Within one tick the logs show `worker N: delivering task ...` followed by the `REMINDER` line, and `reminder_status` goes pending, queued, sent in MongoDB.
 
 ## Follow along
 
