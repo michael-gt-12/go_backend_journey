@@ -91,6 +91,7 @@ Go, Gin, MongoDB, PostgreSQL (pgx, pgvector), Redis, Docker and Compose, GitHub 
 | 24  | Nov 13       | Worker pools, context cancellation/timeouts, time.Ticker, goleak (concurrency lab 2)                   | [Days/Day_24/concurrency-lab-2](Days/Day_24/concurrency-lab-2) |
 | 25  | Sat Nov 14   | Task 8 part 1: reminders in Clean Architecture (ReminderStatus, atomic claim, Notifier, retry usecase) | [Tasks/Task_8/task_manager](Tasks/Task_8/task_manager)         |
 | 26  | Nov 16       | Task 8 part 2: reminder scheduler + worker pool                                                        | Tasks/Task_8/task_manager                                      |
+| 27  | Nov 17       | Task 8 part 3: graceful shutdown, race-free tests for the scheduler and worker pool                    | Tasks/Task_8/task_manager                                      |
 
 ## Day 1 (Oct 18)
 
@@ -780,6 +781,32 @@ go run ./Delivery
 ```
 
 Create tasks due in about 2 minutes through `POST /tasks` (admin token). Within one tick the logs show `worker N: delivering task ...` followed by the `REMINDER` line, and `reminder_status` goes pending, queued, sent in MongoDB.
+
+### Day 27 (Nov 17): Task 8 part 3, graceful shutdown and concurrency tests
+
+**What I built**
+
+- `Delivery/workers/scheduler.go` and `worker_pool.go`: a ticker-driven scheduler that sends claimed tasks into a buffered channel and a pool of workers that deliver them.
+- Graceful shutdown in `Delivery/main.go` with `signal.NotifyContext` and a manual `http.Server`. Shutdown order: HTTP server, scheduler (closes the channel), workers finish in-flight jobs, then MongoDB disconnects.
+- `Delivery/workers/workers_test.go`: tests for exactly-once delivery, channel closing on cancel, and a blocked send, with goleak checking for leaked goroutines.
+- `docs/concurrency.md` with the flow diagram, shutdown order, config table and the known limitation.
+
+**What I learned**
+
+1. Only the sender closes a channel, so the scheduler closes `jobs` and the workers just `range` over it.
+2. Worker jobs get a context from `context.Background()`, not the shutdown context, so Ctrl+C does not cancel a job that is already running.
+3. Concurrency tests should synchronise with channels instead of sleeping. `-race` runs in Docker on my Windows machine, and `-count=20` exposes flaky tests.
+
+**How to run**
+
+```bash
+cd Tasks/Task_8/task_manager
+go run ./Delivery                      # needs MONGO_URI and JWT_SECRET in .env
+go test ./...                          # unit tests
+docker run --rm -v "${PWD}:/app" -w /app golang:latest go test -race -count=20 ./Delivery/workers/...
+```
+
+Optional settings: `REMINDER_INTERVAL`, `REMINDER_WINDOW`, `REMINDER_WORKERS`, `REMINDER_QUEUE_SIZE`.
 
 ## Follow along
 
