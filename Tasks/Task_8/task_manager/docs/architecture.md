@@ -1,4 +1,4 @@
-# Task Manager API: Clean Architecture
+# Task Manager API: Clean Architecture (updated for Task 8)
 
 Task 5 worked, but HTTP, business rules, MongoDB, bcrypt and JWT were mixed together. Task 6 splits them into layers.
 **The API behaviour (routes, status codes, JSON) is unchanged.** The Task 5 Postman collection passes as before.
@@ -47,24 +47,32 @@ Imports only point inward, toward Domain:
 ```
 task_manager/
   Delivery/
-    main.go                    # config, wiring (manual dependency injection), server start
+    main.go                    # config, wiring (manual dependency injection), server start, graceful shutdown
     controllers/controller.go  # HTTP -> usecase calls, error -> status code mapping
     routers/router.go          # routes; receives controller + middleware as parameters
+    workers/
+      scheduler.go             # ticker; claims due tasks and feeds the jobs channel
+      worker_pool.go           # N goroutines that deliver reminders
+      workers_test.go          # concurrency tests (goleak, race-free)
   Domain/
-    domain.go                  # Task, User, Role, Credentials, domain errors, interfaces
+    domain.go                  # Task (with ReminderStatus), User, Role, errors, interfaces
   Infrastructure/
     auth_middleWare.go         # AuthRequired, AdminOnly (uses JWTService)
     jwt_service.go             # generates and validates tokens
     password_service.go        # bcrypt hash and compare
+    log_notifier.go            # Notifier implementation that logs reminders
+  Mocks/                       # testify mocks of the interfaces (incl. NotifierMock)
   Repositories/
-    task_repository.go         # TaskRepository: MongoDB implementation
+    task_repository.go         # TaskRepository: MongoDB (incl. ClaimDueTasks, SetReminderStatus)
     user_repository.go         # UserRepository: MongoDB implementation
   Usecases/
     task_usecases.go           # TaskUsecase
     user_usecases.go           # UserUsecase
+    reminder_usecases.go       # Notifier + ReminderUsecase (claim, retry, status)
   docs/
     architecture.md            # this file
     api_documentation.md
+    concurrency.md             # scheduler, worker pool, shutdown order
 ```
 
 ## 3. How a request flows
@@ -134,3 +142,23 @@ Example: add a `Comment` on a task.
 - `Infrastructure/password_service_test.go` and `jwt_service_test.go` cover the critical security components (valid, wrong, expired and tampered cases).
 - Task 7 adds Testify suites for the usecases and controllers, with mocks of the four interfaces.
 - Regression: the Task 5 Postman collection runs against this version with identical results.
+
+## 9. Task 8: background reminders and the layers
+
+Reminders add concurrency without breaking the dependency rule.
+
+| New piece                                                           | Layer          | Depends on                                            |
+| ------------------------------------------------------------------- | -------------- | ----------------------------------------------------- |
+| `ReminderStatus` on `Task`                                          | Domain         | standard library only                                 |
+| `Notifier` and `ReminderUsecase` interfaces, `reminder_usecases.go` | Usecases       | Domain, the repository interface                      |
+| `LogNotifier`                                                       | Infrastructure | Domain (implements `Notifier`)                        |
+| `ClaimDueTasks`, `SetReminderStatus`                                | Repositories   | Domain, Mongo driver                                  |
+| `Scheduler` and `WorkerPool`                                        | Delivery       | Usecases (`ReminderUsecase`) and Domain (`Task`) only |
+
+Design decisions:
+
+1. **The scheduler and the worker pool only coordinate.** The claiming, retrying and status updates are business rules and live in `ReminderUsecase`, so they can be tested with mocks and no goroutines.
+2. **Delivery depends on an interface (`Notifier`).** Replacing the log line with email or push notifications means writing a new Infrastructure type and changing one line in `main.go`.
+3. **The claim is atomic in the repository** (`FindOneAndUpdate` from `pending` to `queued`), so two overlapping ticks never return the same task.
+4. **`main.go` owns the lifecycle.** It starts the pool and scheduler and stops them in a fixed order (HTTP, scheduler, workers, database). The reasons are in `docs/concurrency.md`.
+5. **Workers do not use the shutdown context**, so a reminder already in progress can finish while the app stops.

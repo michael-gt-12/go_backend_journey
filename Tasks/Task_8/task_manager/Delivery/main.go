@@ -2,8 +2,12 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
+	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -80,20 +84,60 @@ func main() {
 	scheduler := workers.NewScheduler(reminderUC, reminderCfg.Interval, reminderCfg.Window, jobs)
 	pool := workers.NewWorkerPool(reminderCfg.Workers, reminderUC, 5*time.Second)
 
-	// Temporary for today: a plain cancelable context. not  using signal.NotifyContext yet,
-	// because router.Run blocks and would swallow Ctrl+C. Day 27 replaces this with
-	// real graceful shutdown. appCtx is separate from the 10s startup ctx above.
-	appCtx, appCancel := context.WithCancel(context.Background())
-	defer appCancel()
+	// Ctrl+C / SIGTERM arrives here.
+	sigCtx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stopSignals()
+
+	// The scheduler gets its OWN context (not sigCtx) so we control the order:
+	// HTTP first, then scheduler, then workers.
+	schedCtx, cancelSched := context.WithCancel(context.Background())
+	defer cancelSched()
 
 	pool.Start(jobs)
-	go scheduler.Run(appCtx)
+	schedDone := make(chan struct{})
+	go func() {
+		defer close(schedDone)
+		scheduler.Run(schedCtx)
+	}()
 
-	log.Printf("server listening on :%s", port)
-	if err := router.Run(":" + port); err != nil {
-		appCancel()
-		pool.Wait()
-		_ = client.Disconnect(context.Background())
-		log.Fatalf("server: %v", err)
+	// Manual http.Server instead of router.Run, so we can call Shutdown.
+	srv := &http.Server{Addr: ":" + port, Handler: router}
+	serverErr := make(chan error, 1)
+	go func() {
+		log.Printf("server listening on :%s", port)
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			serverErr <- err
+		}
+	}()
+
+	// Wait for a signal or a server failure.
+	select {
+	case <-sigCtx.Done():
+		log.Println("shutdown: signal received")
+	case err := <-serverErr:
+		log.Printf("server error: %v", err)
 	}
+
+	// 1. Stop accepting HTTP requests (10s timeout).
+	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancelShutdown()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Printf("shutdown: http error: %v", err)
+	}
+	log.Println("shutdown: http server stopped")
+
+	// 2. Stop the scheduler; it closes the jobs channel on return.
+	cancelSched()
+	<-schedDone
+	log.Println("shutdown: scheduler stopped, jobs channel closed")
+
+	// 3. Wait for workers to finish in-flight jobs.
+	pool.Wait()
+	log.Println("shutdown: workers finished")
+
+	// 4. Close the database last, after nothing can use it anymore.
+	if err := client.Disconnect(context.Background()); err != nil {
+		log.Printf("shutdown: mongo disconnect: %v", err)
+	}
+	log.Println("shutdown: bye")
 }
