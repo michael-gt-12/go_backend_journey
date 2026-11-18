@@ -92,6 +92,7 @@ Go, Gin, MongoDB, PostgreSQL (pgx, pgvector), Redis, Docker and Compose, GitHub 
 | 25  | Sat Nov 14   | Task 8 part 1: reminders in Clean Architecture (ReminderStatus, atomic claim, Notifier, retry usecase) | [Tasks/Task_8/task_manager](Tasks/Task_8/task_manager)         |
 | 26  | Nov 16       | Task 8 part 2: reminder scheduler + worker pool                                                        | Tasks/Task_8/task_manager                                      |
 | 27  | Nov 17       | Task 8 part 3: graceful shutdown, race-free tests for the scheduler and worker pool                    | Tasks/Task_8/task_manager                                      |
+| 28  | Nov 18       | PostgreSQL basics: SQL, relational modelling, constraints                                              | Days/Day_28                                                    |
 
 ## Day 1 (Oct 18)
 
@@ -807,6 +808,30 @@ docker run --rm -v "${PWD}:/app" -w /app golang:latest go test -race -count=20 .
 ```
 
 Optional settings: `REMINDER_INTERVAL`, `REMINDER_WINDOW`, `REMINDER_WORKERS`, `REMINDER_QUEUE_SIZE`.
+
+## Day 28 - PostgreSQL fundamentals (Task 9 part 1)
+
+**What I built**
+
+- Installed PostgreSQL locally and worked in `psql`
+- Created the `users` and `tasks` tables by hand, with a foreign key from `tasks.user_id` to `users.id`
+- Added NOT NULL, UNIQUE and CHECK constraints (role, status, reminder_status)
+- Seeded 3 users and 10 tasks, with one user having no tasks
+- Tested the constraints on purpose: a duplicate username (`23505`) and an invalid status (`23514`)
+- Wrote a query that lists each user with their number of tasks
+- Documented the schema and the reason for each constraint in `docs/schema.md`
+
+**What I learned**
+
+- A LEFT JOIN keeps users with zero tasks, and a plain JOIN drops them
+- The database can enforce rules itself (unique usernames, allowed status values) and report them with SQL error codes
+- Relational modelling is different from MongoDB: tasks reference their owner by a foreign key, and ON DELETE CASCADE removes a user's tasks with them
+
+**How to run**
+
+1. Create a database and open it in `psql`
+2. Run `Days/Day_28/schema.sql` to create the tables, insert the test data and run the queries
+3. Check the result of the per-user task count query: bob 6, alice 4, carol 0
 
 ## Follow along
 
