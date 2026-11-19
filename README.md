@@ -93,6 +93,7 @@ Go, Gin, MongoDB, PostgreSQL (pgx, pgvector), Redis, Docker and Compose, GitHub 
 | 26  | Nov 16       | Task 8 part 2: reminder scheduler + worker pool                                                        | Tasks/Task_8/task_manager                                      |
 | 27  | Nov 17       | Task 8 part 3: graceful shutdown, race-free tests for the scheduler and worker pool                    | Tasks/Task_8/task_manager                                      |
 | 28  | Nov 18       | PostgreSQL basics: SQL, relational modelling, constraints                                              | Days/Day_28                                                    |
+| 29  | Nov 19       | PostgreSQL migrations, indexes and query performance                                                   | Tasks/Task_9                                                   |
 
 ## Day 1 (Oct 18)
 
@@ -832,6 +833,39 @@ Optional settings: `REMINDER_INTERVAL`, `REMINDER_WINDOW`, `REMINDER_WORKERS`, `
 1. Create a database and open it in `psql`
 2. Run `Days/Day_28/schema.sql` to create the tables, insert the test data and run the queries
 3. Check the result of the per-user task count query: bob 6, alice 4, carol 0
+
+## Day 29 - PostgreSQL migrations and indexing (Task 9 part 2)
+
+**What I built**
+
+- Ran PostgreSQL 18 in Docker and connected to it through the project's Docker network
+- Created database migrations using `golang-migrate`:
+  - `0001_create_users`
+  - `0002_create_tasks`
+  - `0003_indexes`
+- Tested the migration lifecycle by running migrations up, rolling them all back, and applying them again
+- Seeded the database with 20 users and 10,000 tasks using PostgreSQL's `generate_series`
+- Ran `ANALYZE` to update database statistics before measuring query performance
+- Used `EXPLAIN ANALYZE` to measure the task-list query before and after adding the composite index on `(user_id, due_date)`
+- Documented the execution plans, timings, and indexing trade-offs in `docs/performance.md`
+
+**What I learned**
+
+- Database migrations provide a version-controlled way to manage schema changes and safely move between database versions
+- `golang-migrate` supports applying migrations (`up`) and reversing them (`down`)
+- Without the composite index, PostgreSQL used a Sequential Scan followed by a Sort to retrieve a user's tasks
+- After adding the index, PostgreSQL used an Index Scan followed by an Incremental Sort
+- The best execution time across three runs improved from **0.948 ms to 0.079 ms**, approximately a **12× speed-up**
+- Indexes can significantly improve read performance, but they also consume storage and add overhead to inserts and updates
+
+**How to run**
+
+1. Start the PostgreSQL Docker container and make sure it is connected to the project's Docker network.
+2. Navigate to `Tasks/Task_9/task_manager`, where the migration files are located.
+3. Run the migrations using `golang-migrate`.
+4. Seed the database with 10,000 tasks and run `ANALYZE`.
+5. Run the task-list query with `EXPLAIN ANALYZE` before and after applying the index migration.
+6. Compare the execution plans and timings in `docs/performance.md`.
 
 ## Follow along
 
