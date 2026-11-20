@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool" // NEW
 	"github.com/joho/godotenv"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -42,6 +43,12 @@ func main() {
 	dbName := getenv("MONGO_DB", "taskmanager")
 	port := getenv("PORT", "8080")
 
+	// NEW: which database stores users. Default is postgres (per the Task 9 spec).
+	dbDriver := getenv("DB_DRIVER", "postgres")
+	if dbDriver != "postgres" && dbDriver != "mongo" {
+		log.Fatalf("invalid DB_DRIVER %q (use postgres or mongo)", dbDriver)
+	}
+
 	reminderCfg, err := LoadReminderConfig()
 	if err != nil {
 		log.Fatalf("invalid configuration: %v", err)
@@ -69,7 +76,28 @@ func main() {
 	jwtService := Infrastructure.NewJWTService(jwtSecret, 24*time.Hour)
 
 	taskRepo := Repositories.NewTaskRepository(db)
-	userRepo := Repositories.NewUserRepository(db)
+	var userRepo Repositories.UserRepository
+	var pgPool *pgxpool.Pool
+
+	switch dbDriver {
+	case "postgres":
+		// The helper has its own 5s ping timeout, so we pass a plain background context.
+		pgPool, err = Infrastructure.NewPostgresPool(context.Background())
+		if err != nil {
+			log.Fatalf("postgres: %v", err)
+		}
+		userRepo = Repositories.NewPostgresUserRepository(pgPool)
+		log.Println("users: using PostgreSQL")
+
+	case "mongo":
+		// The unique index on username is only needed for Mongo;
+		// in Postgres the UNIQUE constraint from the migration does this job.
+		if err := Repositories.EnsureUserIndexes(ctx, db); err != nil {
+			log.Fatalf("ensure indexes: %v", err)
+		}
+		userRepo = Repositories.NewMongoUserRepository(db) // CHANGED: renamed constructor
+		log.Println("users: using MongoDB")
+	}
 
 	taskUC := Usecases.NewTaskUsecase(taskRepo)
 	userUC := Usecases.NewUserUsecase(userRepo, passwordService, jwtService)
@@ -136,6 +164,10 @@ func main() {
 	log.Println("shutdown: workers finished")
 
 	// 4. Close the database last, after nothing can use it anymore.
+	if pgPool != nil { // NEW
+		pgPool.Close()
+		log.Println("shutdown: postgres pool closed")
+	}
 	if err := client.Disconnect(context.Background()); err != nil {
 		log.Printf("shutdown: mongo disconnect: %v", err)
 	}

@@ -39,4 +39,5 @@ var (
 	ErrInvalidInput       = errors.New("invalid input")
 	ErrUsernameTaken      = errors.New("username already taken")
 	ErrInvalidCredentials = errors.New("invalid username or password")
+	ErrDuplicateUsername  = errors.New("username already exists")
 )
