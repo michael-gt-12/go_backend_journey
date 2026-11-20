@@ -94,6 +94,7 @@ Go, Gin, MongoDB, PostgreSQL (pgx, pgvector), Redis, Docker and Compose, GitHub 
 | 27  | Nov 17       | Task 8 part 3: graceful shutdown, race-free tests for the scheduler and worker pool                    | Tasks/Task_8/task_manager                                      |
 | 28  | Nov 18       | PostgreSQL basics: SQL, relational modelling, constraints                                              | Days/Day_28                                                    |
 | 29  | Nov 19       | PostgreSQL migrations, indexes and query performance                                                   | Tasks/Task_9                                                   |
+| 30  | Nov 20       | PostgreSQL with pgx and pgxpool, swapping the user repository behind an interface                      | Tasks/Task_9/task_manager                                      |
 
 ## Day 1 (Oct 18)
 
@@ -866,6 +867,38 @@ Optional settings: `REMINDER_INTERVAL`, `REMINDER_WINDOW`, `REMINDER_WORKERS`, `
 4. Seed the database with 10,000 tasks and run `ANALYZE`.
 5. Run the task-list query with `EXPLAIN ANALYZE` before and after applying the index migration.
 6. Compare the execution plans and timings in `docs/performance.md`.
+
+## Day 30: PostgreSQL with pgx (Task 9, part 3)
+
+### What I built
+
+- Split the user repository into three files: `user_repository.go` (interface only), `user_repository_mongo.go` (the existing Mongo code) and `user_repository_postgres.go` (new, using pgx)
+- `Infrastructure/postgres.go`: a `pgxpool` connection pool built from `DATABASE_URL`, with pool size from `DB_MAX_CONNS` and a startup ping so the app fails fast if the database is unreachable
+- A `DB_DRIVER=postgres|mongo` switch in `Delivery/main.go`, the only place that knows which database is used
+- Postgres error mapping: no rows becomes `ErrNotFound`, and SQLSTATE `23505` becomes `ErrUsernameTaken` (409)
+- Postgres pool closed in the graceful shutdown sequence, after the workers finish
+
+### What I learned
+
+1. With Clean Architecture, swapping a database means writing one new repository file and changing one line in `main.go`. Usecases and controllers did not change.
+2. Check the pgx error code (`23505`) instead of the error text, so duplicate usernames are detected reliably.
+3. A pool should be created once, pinged at startup and closed on shutdown.
+
+### How to run
+
+1. Create the database and run the migrations:
+   psql -U postgres -c "CREATE DATABASE taskmanager;"
+   migrate -path migrations -database "$DATABASE_URL" up
+2. Set `.env`: `DB_DRIVER=postgres`, `DATABASE_URL=postgres://postgres:PASSWORD@localhost:5432/taskmanager?sslmode=disable`, `MONGO_URI`, `JWT_SECRET`
+3. Start MongoDB (tasks still use it until Day 31), then run:
+   go run ./Delivery
+4. Test with curl.exe:
+   - `POST /register` returns the new user, and the first user gets the `admin` role
+   - registering the same username again returns `username already taken` (409)
+   - `POST /login` with a wrong password returns `invalid username or password`, and the correct password returns a JWT
+5. Confirm the data in Postgres:
+   psql -U postgres -d taskmanager -c "SELECT id, username, role FROM users;"
+6. Set `DB_DRIVER=mongo` to confirm the old behaviour still works
 
 ## Follow along
 
