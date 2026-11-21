@@ -95,6 +95,7 @@ Go, Gin, MongoDB, PostgreSQL (pgx, pgvector), Redis, Docker and Compose, GitHub 
 | 28  | Nov 18       | PostgreSQL basics: SQL, relational modelling, constraints                                              | Days/Day_28                                                    |
 | 29  | Nov 19       | PostgreSQL migrations, indexes and query performance                                                   | Tasks/Task_9                                                   |
 | 30  | Nov 20       | PostgreSQL with pgx and pgxpool, swapping the user repository behind an interface                      | Tasks/Task_9/task_manager                                      |
+| 31  | Nov 21       | Task 9 part 4: Postgres task repository, pagination, ownership, index and pagination benchmarks        | Tasks/Task_9/task_manager                                      |
 
 ## Day 1 (Oct 18)
 
@@ -899,6 +900,38 @@ Optional settings: `REMINDER_INTERVAL`, `REMINDER_WINDOW`, `REMINDER_WORKERS`, `
 5. Confirm the data in Postgres:
    psql -U postgres -d taskmanager -c "SELECT id, username, role FROM users;"
 6. Set `DB_DRIVER=mongo` to confirm the old behaviour still works
+
+### Day 31 (Nov 21): Postgres task repository, pagination and ownership
+
+**What I built**
+
+- `Repositories/task_repository_postgres.go`: Create, GetByID, Update, Delete, List, ClaimDueTasks (`FOR UPDATE SKIP LOCKED`) and SetReminderStatus with pgx, parameterised queries and pgx error mapping.
+- Split the Mongo code into `task_repository_mongo.go`; `task_repository.go` is now the interface plus `TaskFilter`.
+- `GET /tasks` supports `?page=`, `?limit=` and `?status=`, validates them (400 on bad values) and returns `X-Total-Count`, `X-Page` and `X-Limit` headers while the body stays an array.
+- Ownership: every task has an owner. Users see and change only their own tasks, admins see all, and another user's task returns 404.
+- `DB_DRIVER` now switches both users and tasks in `main.go`.
+- Updated the router, mocks, controller and usecase tests and `docs/api_documentation.md`; all tests pass.
+- Checked it by hand with two users and an admin (404 for other users' tasks, headers, 400 on bad query values).
+- `docs/performance.md`: benchmarks on 10,000 seeded tasks.
+  - The `(user_id, due_date)` index took the list query from 1.268 ms to 0.132 ms (about 9.6x, 197 to 13 buffers).
+  - Keyset pagination took a deep page from 5.321 ms to 0.071 ms compared with OFFSET.
+
+**What I learned**
+
+- The task owner must come from the token, never from the request body.
+- Return 404 instead of 403 for someone else's task, so the API does not reveal that it exists.
+- `EXPLAIN ANALYZE` shows what the planner really does. On a tiny table it correctly ignores the index, and OFFSET at a deep page did a full scan and sort.
+
+**How to run**
+
+```bash
+cd Tasks/Task_9/task_manager
+migrate -path migrations -database "$DATABASE_URL" up
+DB_DRIVER=postgres go run ./Delivery
+go test ./... -cover
+```
+
+Try it: `curl.exe -i "http://localhost:8080/tasks?page=1&limit=5&status=pending" -H "Authorization: Bearer <token>"`
 
 ## Follow along
 
