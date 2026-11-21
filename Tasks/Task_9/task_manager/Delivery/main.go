@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool" // NEW
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -35,15 +35,13 @@ func main() {
 	// .env is optional; real environment variables win.
 	_ = godotenv.Load()
 
-	mongoURI := os.Getenv("MONGO_URI")
 	jwtSecret := os.Getenv("JWT_SECRET")
-	if mongoURI == "" || jwtSecret == "" {
-		log.Fatal("MONGO_URI and JWT_SECRET must be set")
+	if jwtSecret == "" {
+		log.Fatal("JWT_SECRET must be set")
 	}
-	dbName := getenv("MONGO_DB", "taskmanager")
 	port := getenv("PORT", "8080")
 
-	// NEW: which database stores users. Default is postgres (per the Task 9 spec).
+	// Which database stores users AND tasks. Default is postgres (per the Task 9 spec).
 	dbDriver := getenv("DB_DRIVER", "postgres")
 	if dbDriver != "postgres" && dbDriver != "mongo" {
 		log.Fatalf("invalid DB_DRIVER %q (use postgres or mongo)", dbDriver)
@@ -54,50 +52,61 @@ func main() {
 		log.Fatalf("invalid configuration: %v", err)
 	}
 
-	// Connect to MongoDB and fail fast if it is unreachable.
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(mongoURI))
-	if err != nil {
-		log.Fatalf("mongo connect: %v", err)
-	}
-	if err := client.Ping(ctx, nil); err != nil {
-		log.Fatalf("mongo ping: %v", err)
-	}
-	db := client.Database(dbName)
-
-	if err := Repositories.EnsureUserIndexes(ctx, db); err != nil {
-		log.Fatalf("ensure indexes: %v", err)
-	}
-
-	// Manual dependency injection: infrastructure -> repositories -> usecases -> controller -> router.
-	passwordService := Infrastructure.NewPasswordService()
-	jwtService := Infrastructure.NewJWTService(jwtSecret, 24*time.Hour)
-
-	taskRepo := Repositories.NewTaskRepository(db)
-	var userRepo Repositories.UserRepository
-	var pgPool *pgxpool.Pool
+	// Pick the repositories. This switch is the only place that knows which database is used.
+	var (
+		taskRepo Repositories.TaskRepository
+		userRepo Repositories.UserRepository
+		pgPool   *pgxpool.Pool
+		client   *mongo.Client
+	)
 
 	switch dbDriver {
 	case "postgres":
-		// The helper has its own 5s ping timeout, so we pass a plain background context.
+		// The helper has its own 5s ping timeout, so a plain background context is fine.
 		pgPool, err = Infrastructure.NewPostgresPool(context.Background())
 		if err != nil {
 			log.Fatalf("postgres: %v", err)
 		}
 		userRepo = Repositories.NewPostgresUserRepository(pgPool)
-		log.Println("users: using PostgreSQL")
+		taskRepo = Repositories.NewPostgresTaskRepository(pgPool)
+		log.Println("storage: using PostgreSQL for users and tasks")
 
 	case "mongo":
+		mongoURI := os.Getenv("MONGO_URI")
+		if mongoURI == "" {
+			log.Fatal("MONGO_URI must be set when DB_DRIVER=mongo")
+		}
+		dbName := getenv("MONGO_DB", "taskmanager")
+
+		// Connect and fail fast if MongoDB is unreachable.
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		client, err = mongo.Connect(ctx, options.Client().ApplyURI(mongoURI))
+		if err != nil {
+			cancel()
+			log.Fatalf("mongo connect: %v", err)
+		}
+		if err := client.Ping(ctx, nil); err != nil {
+			cancel()
+			log.Fatalf("mongo ping: %v", err)
+		}
+		db := client.Database(dbName)
+
 		// The unique index on username is only needed for Mongo;
 		// in Postgres the UNIQUE constraint from the migration does this job.
 		if err := Repositories.EnsureUserIndexes(ctx, db); err != nil {
+			cancel()
 			log.Fatalf("ensure indexes: %v", err)
 		}
-		userRepo = Repositories.NewMongoUserRepository(db) // CHANGED: renamed constructor
-		log.Println("users: using MongoDB")
+		cancel()
+
+		userRepo = Repositories.NewMongoUserRepository(db)
+		taskRepo = Repositories.NewTaskRepository(db)
+		log.Println("storage: using MongoDB for users and tasks")
 	}
+
+	// Manual dependency injection: infrastructure -> repositories -> usecases -> controller -> router.
+	passwordService := Infrastructure.NewPasswordService()
+	jwtService := Infrastructure.NewJWTService(jwtSecret, 24*time.Hour)
 
 	taskUC := Usecases.NewTaskUsecase(taskRepo)
 	userUC := Usecases.NewUserUsecase(userRepo, passwordService, jwtService)
@@ -164,12 +173,15 @@ func main() {
 	log.Println("shutdown: workers finished")
 
 	// 4. Close the database last, after nothing can use it anymore.
-	if pgPool != nil { // NEW
+	if pgPool != nil {
 		pgPool.Close()
 		log.Println("shutdown: postgres pool closed")
 	}
-	if err := client.Disconnect(context.Background()); err != nil {
-		log.Printf("shutdown: mongo disconnect: %v", err)
+	if client != nil {
+		if err := client.Disconnect(context.Background()); err != nil {
+			log.Printf("shutdown: mongo disconnect: %v", err)
+		}
+		log.Println("shutdown: mongo disconnected")
 	}
 	log.Println("shutdown: bye")
 }

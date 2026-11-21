@@ -4,6 +4,7 @@ package Mocks
 
 import (
 	Domain "task_manager/Domain"
+	Repositories "task_manager/Repositories"
 
 	context "context"
 
@@ -117,6 +118,43 @@ func (_m *TaskUsecaseMock) GetTaskByID(ctx context.Context, id string) (Domain.T
 	}
 
 	return r0, r1
+}
+
+// ListTasks provides a mock function with given fields: ctx, f
+func (_m *TaskUsecaseMock) ListTasks(ctx context.Context, f Repositories.TaskFilter) ([]Domain.Task, int, error) {
+	ret := _m.Called(ctx, f)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListTasks")
+	}
+
+	var r0 []Domain.Task
+	var r1 int
+	var r2 error
+	if rf, ok := ret.Get(0).(func(context.Context, Repositories.TaskFilter) ([]Domain.Task, int, error)); ok {
+		return rf(ctx, f)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, Repositories.TaskFilter) []Domain.Task); ok {
+		r0 = rf(ctx, f)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]Domain.Task)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, Repositories.TaskFilter) int); ok {
+		r1 = rf(ctx, f)
+	} else {
+		r1 = ret.Get(1).(int)
+	}
+
+	if rf, ok := ret.Get(2).(func(context.Context, Repositories.TaskFilter) error); ok {
+		r2 = rf(ctx, f)
+	} else {
+		r2 = ret.Error(2)
+	}
+
+	return r0, r1, r2
 }
 
 // UpdateTask provides a mock function with given fields: ctx, id, task

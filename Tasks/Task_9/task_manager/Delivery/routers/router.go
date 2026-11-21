@@ -15,18 +15,19 @@ func SetupRouter(h *controllers.Controller, jwtService *Infrastructure.JWTServic
 	r.POST("/register", h.Register)
 	r.POST("/login", h.Login)
 
-	// Any logged-in user
+	// Any logged-in user. Task ownership (own tasks only, admins see all)
+	// is enforced in the usecase layer, not here.
 	auth := r.Group("/")
 	auth.Use(Infrastructure.AuthMiddleware(jwtService))
 	auth.GET("/tasks", h.GetTasks)
 	auth.GET("/tasks/:id", h.GetTask)
+	auth.POST("/tasks", h.CreateTask)
+	auth.PUT("/tasks/:id", h.UpdateTask)
+	auth.DELETE("/tasks/:id", h.DeleteTask)
 
 	// Admin only
 	admin := auth.Group("/")
 	admin.Use(Infrastructure.AdminOnly())
-	admin.POST("/tasks", h.CreateTask)
-	admin.PUT("/tasks/:id", h.UpdateTask)
-	admin.DELETE("/tasks/:id", h.DeleteTask)
 	admin.POST("/promote/:id", h.Promote)
 
 	return r

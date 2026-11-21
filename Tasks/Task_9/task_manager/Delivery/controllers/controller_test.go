@@ -6,7 +6,6 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -19,6 +18,7 @@ import (
 	"task_manager/Domain"
 	"task_manager/Infrastructure"
 	"task_manager/Mocks"
+	"task_manager/Repositories"
 )
 
 type ControllerSuite struct {
@@ -81,6 +81,7 @@ type tc struct {
 	setup    func()        // sets mock expectations (nil = usecase must NOT be called)
 	status   int
 	contains string
+	headers  map[string]string // expected response headers
 }
 
 func (s *ControllerSuite) run(cases []tc) {
@@ -99,6 +100,9 @@ func (s *ControllerSuite) run(cases []tc) {
 			s.Equal(c.status, w.Code, w.Body.String())
 			if c.contains != "" {
 				s.Contains(w.Body.String(), c.contains)
+			}
+			for k, v := range c.headers {
+				s.Equal(v, w.Header().Get(k), "header "+k)
 			}
 			s.tasks.AssertExpectations(s.T())
 			s.users.AssertExpectations(s.T())
@@ -219,14 +223,46 @@ func (s *ControllerSuite) TestPromote() {
 // ---------- task endpoints ----------
 
 func (s *ControllerSuite) TestGetTasks() {
+	defaults := Repositories.TaskFilter{Page: 1, Limit: 10}
+
 	s.run([]tc{
 		{
-			name: "logged-in user gets 200", method: "GET", path: "/tasks", token: s.user,
+			name: "logged-in user gets 200, default filter and pagination headers", method: "GET", path: "/tasks", token: s.user,
 			setup: func() {
-				s.tasks.On("GetAllTasks", mock.Anything).Return([]Domain.Task{sampleTask()}, nil).Once()
+				s.tasks.On("ListTasks", mock.Anything, defaults).Return([]Domain.Task{sampleTask()}, 42, nil).Once()
 			},
 			status: http.StatusOK, contains: "Write tests",
+			headers: map[string]string{"X-Total-Count": "42", "X-Page": "1", "X-Limit": "10"},
 		},
+		{
+			name: "query parameters are parsed", method: "GET", path: "/tasks?page=2&limit=5&status=done", token: s.user,
+			setup: func() {
+				s.tasks.On("ListTasks", mock.Anything, Repositories.TaskFilter{Page: 2, Limit: 5, Status: "done"}).
+					Return([]Domain.Task{sampleTask()}, 11, nil).Once()
+			},
+			status:  http.StatusOK,
+			headers: map[string]string{"X-Total-Count": "11", "X-Page": "2", "X-Limit": "5"},
+		},
+		{
+			name: "admin can list too", method: "GET", path: "/tasks", token: s.admin,
+			setup: func() {
+				s.tasks.On("ListTasks", mock.Anything, defaults).Return([]Domain.Task{sampleTask()}, 1, nil).Once()
+			},
+			status: http.StatusOK,
+		},
+		{
+			name: "empty result is an empty array", method: "GET", path: "/tasks", token: s.user,
+			setup: func() {
+				s.tasks.On("ListTasks", mock.Anything, defaults).Return([]Domain.Task{}, 0, nil).Once()
+			},
+			status: http.StatusOK, contains: "[]",
+			headers: map[string]string{"X-Total-Count": "0"},
+		},
+		{name: "page=0 returns 400", method: "GET", path: "/tasks?page=0", token: s.user, status: http.StatusBadRequest},
+		{name: "page=abc returns 400", method: "GET", path: "/tasks?page=abc", token: s.user, status: http.StatusBadRequest},
+		{name: "limit=0 returns 400", method: "GET", path: "/tasks?limit=0", token: s.user, status: http.StatusBadRequest},
+		{name: "limit=101 returns 400", method: "GET", path: "/tasks?limit=101", token: s.user, status: http.StatusBadRequest},
+		{name: "unknown status returns 400", method: "GET", path: "/tasks?status=foo", token: s.user, status: http.StatusBadRequest},
 		{
 			name: "no token returns 401", method: "GET", path: "/tasks", status: http.StatusUnauthorized,
 		},
@@ -238,7 +274,7 @@ func (s *ControllerSuite) TestGetTasks() {
 		{
 			name: "usecase error returns 500", method: "GET", path: "/tasks", token: s.user,
 			setup: func() {
-				s.tasks.On("GetAllTasks", mock.Anything).Return(nil, errors.New("db down")).Once()
+				s.tasks.On("ListTasks", mock.Anything, defaults).Return(nil, 0, errors.New("db down")).Once()
 			},
 			status: http.StatusInternalServerError, contains: "internal server error",
 		},
@@ -253,19 +289,23 @@ func (s *ControllerSuite) TestGetTask() {
 			status: http.StatusOK, contains: "Write tests",
 		},
 		{
-			name: "missing task returns 404", method: "GET", path: "/tasks/zzz", token: s.user,
+			name: "missing or someone else's task returns 404", method: "GET", path: "/tasks/zzz", token: s.user,
 			setup: func() {
 				s.tasks.On("GetTaskByID", mock.Anything, "zzz").Return(Domain.Task{}, Domain.ErrNotFound).Once()
 			},
 			status: http.StatusNotFound,
 		},
+		{
+			name: "no token returns 401", method: "GET", path: "/tasks/t1", status: http.StatusUnauthorized,
+		},
 	})
 }
 
 func (s *ControllerSuite) TestCreateTask() {
-	// Controller forces ID = "" before calling the usecase, so we check exactly that.
+	// The controller forces ID = "" and OwnerID = "" before calling the usecase;
+	// the usecase then sets the owner from the authenticated caller.
 	matchNew := mock.MatchedBy(func(t Domain.Task) bool {
-		return t.ID == "" && t.Title == "Write tests" && t.Status == "pending" && t.DueDate.Equal(due)
+		return t.ID == "" && t.OwnerID == "" && t.Title == "Write tests" && t.Status == "pending" && t.DueDate.Equal(due)
 	})
 	s.run([]tc{
 		{
@@ -277,21 +317,35 @@ func (s *ControllerSuite) TestCreateTask() {
 			status: http.StatusCreated, contains: "Write tests",
 		},
 		{
-			name: "invalid JSON -> 400", method: "POST", path: "/tasks", token: s.admin,
+			name: "normal user creates their own task -> 201", method: "POST", path: "/tasks", token: s.user,
+			body: sampleTask(),
+			setup: func() {
+				s.tasks.On("CreateTask", mock.Anything, matchNew).Return(sampleTask(), nil).Once()
+			},
+			status: http.StatusCreated,
+		},
+		{
+			name: "owner_id in the body is ignored", method: "POST", path: "/tasks", token: s.user,
+			body: map[string]interface{}{
+				"title": "Write tests", "due_date": due, "status": "pending", "owner_id": "evil-user",
+			},
+			setup: func() {
+				s.tasks.On("CreateTask", mock.Anything, matchNew).Return(sampleTask(), nil).Once()
+			},
+			status: http.StatusCreated,
+		},
+		{
+			name: "invalid JSON -> 400", method: "POST", path: "/tasks", token: s.user,
 			body: "{bad json", status: http.StatusBadRequest,
 		},
 		{
-			name: "usecase validation error -> 400", method: "POST", path: "/tasks", token: s.admin,
+			name: "usecase validation error -> 400", method: "POST", path: "/tasks", token: s.user,
 			body: Domain.Task{Description: "no title"},
 			setup: func() {
 				s.tasks.On("CreateTask", mock.Anything, mock.Anything).
 					Return(Domain.Task{}, Domain.ErrInvalidInput).Once()
 			},
 			status: http.StatusBadRequest,
-		},
-		{
-			name: "normal user -> 403", method: "POST", path: "/tasks", token: s.user,
-			body: sampleTask(), status: http.StatusForbidden,
 		},
 		{
 			name: "no token -> 401", method: "POST", path: "/tasks",
@@ -303,21 +357,29 @@ func (s *ControllerSuite) TestCreateTask() {
 func (s *ControllerSuite) TestUpdateTask() {
 	s.run([]tc{
 		{
-			name: "admin updates task -> 200", method: "PUT", path: "/tasks/t1", token: s.admin,
+			name: "owner updates task -> 200", method: "PUT", path: "/tasks/t1", token: s.user,
 			body: sampleTask(),
 			setup: func() {
 				s.tasks.On("UpdateTask", mock.Anything, "t1", mock.MatchedBy(func(t Domain.Task) bool {
-					return t.Title == "Write tests"
+					return t.Title == "Write tests" && t.OwnerID == ""
 				})).Return(sampleTask(), nil).Once()
 			},
 			status: http.StatusOK,
 		},
 		{
-			name: "invalid JSON -> 400", method: "PUT", path: "/tasks/t1", token: s.admin,
+			name: "admin updates task -> 200", method: "PUT", path: "/tasks/t1", token: s.admin,
+			body: sampleTask(),
+			setup: func() {
+				s.tasks.On("UpdateTask", mock.Anything, "t1", mock.Anything).Return(sampleTask(), nil).Once()
+			},
+			status: http.StatusOK,
+		},
+		{
+			name: "invalid JSON -> 400", method: "PUT", path: "/tasks/t1", token: s.user,
 			body: "{bad", status: http.StatusBadRequest,
 		},
 		{
-			name: "missing task -> 404", method: "PUT", path: "/tasks/zzz", token: s.admin,
+			name: "missing or someone else's task -> 404", method: "PUT", path: "/tasks/zzz", token: s.user,
 			body: sampleTask(),
 			setup: func() {
 				s.tasks.On("UpdateTask", mock.Anything, "zzz", mock.Anything).
@@ -326,8 +388,8 @@ func (s *ControllerSuite) TestUpdateTask() {
 			status: http.StatusNotFound,
 		},
 		{
-			name: "normal user -> 403", method: "PUT", path: "/tasks/t1", token: s.user,
-			body: sampleTask(), status: http.StatusForbidden,
+			name: "no token -> 401", method: "PUT", path: "/tasks/t1",
+			body: sampleTask(), status: http.StatusUnauthorized,
 		},
 	})
 }
@@ -335,18 +397,19 @@ func (s *ControllerSuite) TestUpdateTask() {
 func (s *ControllerSuite) TestDeleteTask() {
 	s.run([]tc{
 		{
-			name: "admin deletes task -> 200", method: "DELETE", path: "/tasks/t1", token: s.admin,
+			name: "owner deletes task -> 200", method: "DELETE", path: "/tasks/t1", token: s.user,
 			setup:  func() { s.tasks.On("DeleteTask", mock.Anything, "t1").Return(nil).Once() },
 			status: http.StatusOK, contains: "task deleted",
 		},
 		{
-			name: "missing task -> 404", method: "DELETE", path: "/tasks/zzz", token: s.admin,
-			setup:  func() { s.tasks.On("DeleteTask", mock.Anything, "zzz").Return(Domain.ErrNotFound).Once() },
-			status: http.StatusNotFound,
+			name: "admin deletes task -> 200", method: "DELETE", path: "/tasks/t1", token: s.admin,
+			setup:  func() { s.tasks.On("DeleteTask", mock.Anything, "t1").Return(nil).Once() },
+			status: http.StatusOK,
 		},
 		{
-			name: "normal user -> 403", method: "DELETE", path: "/tasks/t1", token: s.user,
-			status: http.StatusForbidden,
+			name: "missing or someone else's task -> 404", method: "DELETE", path: "/tasks/zzz", token: s.user,
+			setup:  func() { s.tasks.On("DeleteTask", mock.Anything, "zzz").Return(Domain.ErrNotFound).Once() },
+			status: http.StatusNotFound,
 		},
 		{
 			name: "no token -> 401", method: "DELETE", path: "/tasks/t1",
@@ -354,5 +417,3 @@ func (s *ControllerSuite) TestDeleteTask() {
 		},
 	})
 }
-
-var _ = strings.Contains // keep import if you trim tests

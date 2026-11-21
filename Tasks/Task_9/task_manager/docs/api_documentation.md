@@ -1,10 +1,10 @@
 # Task Manager API Documentation
 
-A RESTful API for managing tasks, built with Go, Gin, MongoDB and JWT authentication. It also runs a background reminder system (see section 6).
+A RESTful API for managing tasks, built with Go, Gin, PostgreSQL (or MongoDB) and JWT authentication. It also runs a background reminder system (see section 6).
 
 - **Base URL (local):** `http://localhost:8080`
 - **Content type:** all request and response bodies are JSON (`Content-Type: application/json`)
-- **Data storage:** MongoDB (persistent; data survives server restarts)
+- **Data storage:** PostgreSQL by default, MongoDB optional (selected with `DB_DRIVER`). Data survives server restarts.
 - **Authentication:** JWT bearer tokens (see section 3)
 
 ---
@@ -14,38 +14,45 @@ A RESTful API for managing tasks, built with Go, Gin, MongoDB and JWT authentica
 ### Requirements
 
 - Go 1.21 or newer
-- MongoDB, either a local install (MongoDB Community Server) or a free MongoDB Atlas cluster
+- PostgreSQL 13 or newer (the default database), or MongoDB if you set `DB_DRIVER=mongo`
+- The `migrate` CLI ([golang-migrate](https://github.com/golang-migrate/migrate)) to create the PostgreSQL schema
 - Postman or `curl` for testing
 
-### MongoDB setup
+### PostgreSQL setup (default)
 
-**Option A: local MongoDB**
+1. Install PostgreSQL and create a database, for example `taskmanager`.
+2. Set `DATABASE_URL`, for example `postgres://postgres:<password>@localhost:5432/taskmanager?sslmode=disable`.
+3. Create the schema with the versioned migrations in `migrations/` (the app never creates tables by itself):
 
-1. Install MongoDB Community Server and make sure the `mongod` service is running.
-2. The default connection string is `mongodb://localhost:27017`.
+```bash
+migrate -path migrations -database "$DATABASE_URL" up
+```
 
-**Option B: MongoDB Atlas**
+To undo the last migration: `migrate -path migrations -database "$DATABASE_URL" down 1`.
 
-1. Create a free cluster, add a database user, and allow your IP address under Network Access.
-2. Copy the connection string, for example `mongodb+srv://<user>:<password>@<cluster>.mongodb.net`.
+### MongoDB setup (only when `DB_DRIVER=mongo`)
+
+1. Install MongoDB Community Server (default `mongodb://localhost:27017`) or create a free MongoDB Atlas cluster.
+2. Set `MONGO_URI` and optionally `MONGO_DB`.
+3. The `users` collection gets a unique index on `username`, created automatically at startup.
 
 ### Configuration
 
-| Variable              | Description                                                 | Example                     |
-| --------------------- | ----------------------------------------------------------- | --------------------------- |
-| `MONGO_URI`           | MongoDB connection string (required)                        | `mongodb://localhost:27017` |
-| `MONGO_DB`            | Database name (default `taskmanager`)                       | `taskmanager`               |
-| `PORT`                | Port the HTTP server listens on (default `8080`)            | `8080`                      |
-| `JWT_SECRET`          | Secret used to sign JWTs (required, at least 32 characters) | a long random string        |
-| `REMINDER_INTERVAL`   | Time between reminder scheduler ticks (default `30s`)       | `30s`                       |
-| `REMINDER_WINDOW`     | How far ahead a task counts as "due soon" (default `10m`)   | `10m`                       |
-| `REMINDER_WORKERS`    | Number of reminder worker goroutines (default `3`)          | `3`                         |
-| `REMINDER_QUEUE_SIZE` | Buffer size of the reminder jobs channel (default `100`)    | `100`                       |
+| Variable              | Description                                                       | Example                                           |
+| --------------------- | ----------------------------------------------------------------- | ------------------------------------------------- |
+| `DB_DRIVER`           | Storage for users and tasks: `postgres` (default) or `mongo`      | `postgres`                                        |
+| `DATABASE_URL`        | PostgreSQL connection string (required when `DB_DRIVER=postgres`) | `postgres://user:pass@localhost:5432/taskmanager` |
+| `MONGO_URI`           | MongoDB connection string (required when `DB_DRIVER=mongo`)       | `mongodb://localhost:27017`                       |
+| `MONGO_DB`            | MongoDB database name (default `taskmanager`)                     | `taskmanager`                                     |
+| `PORT`                | Port the HTTP server listens on (default `8080`)                  | `8080`                                            |
+| `JWT_SECRET`          | Secret used to sign JWTs (required, at least 32 characters)       | a long random string                              |
+| `REMINDER_INTERVAL`   | Time between reminder scheduler ticks (default `30s`)             | `30s`                                             |
+| `REMINDER_WINDOW`     | How far ahead a task counts as "due soon" (default `10m`)         | `10m`                                             |
+| `REMINDER_WORKERS`    | Number of reminder worker goroutines (default `3`)                | `3`                                               |
+| `REMINDER_QUEUE_SIZE` | Buffer size of the reminder jobs channel (default `100`)          | `100`                                             |
 
-- The database is named `taskmanager` and has two collections: `tasks` and `users`.
-- The `users` collection has a unique index on `username`, created automatically at startup.
 - Copy `.env.example` to `.env` and fill in your values. The `.env` file is git-ignored and must never be committed.
-- On startup the server connects to MongoDB and pings it. If the database is unreachable, `JWT_SECRET` is missing, or a `REMINDER_*` value is invalid, the server exits with an error message (fail fast).
+- On startup the server connects to the selected database and pings it. If the database is unreachable, `JWT_SECRET` is missing, `DB_DRIVER` is invalid, or a `REMINDER_*` value is invalid, the server exits with an error message (fail fast).
 - On Ctrl+C (SIGINT) or SIGTERM the server shuts down gracefully (see section 6.4).
 
 ### Run the API
@@ -61,22 +68,24 @@ go run ./Delivery
 
 ### Task
 
-| Field             | Type   | Description                                                                                                                         |
-| ----------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `id`              | string | MongoDB ObjectID as a 24-character hex string (generated by the server; ignored if sent in a request)                               |
-| `title`           | string | Task title (required)                                                                                                               |
-| `description`     | string | Task details                                                                                                                        |
-| `due_date`        | string | Due date in RFC 3339 format, e.g. `2026-12-01T10:00:00Z`                                                                            |
-| `status`          | string | One of `pending`, `in_progress`, `done`                                                                                             |
-| `reminder_status` | string | **New in Task 8.** One of `pending`, `queued`, `sent`, `failed`. Managed by the server (see section 6); it is returned in responses |
+| Field             | Type   | Description                                                                                                                      |
+| ----------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| `id`              | string | Generated by the server (a UUID in PostgreSQL, a 24-character ObjectID hex string in MongoDB); ignored if sent in a request      |
+| `owner_id`        | string | **New in Task 9.** ID of the user who owns the task. Set by the server from the authenticated user; ignored if sent in a request |
+| `title`           | string | Task title (required)                                                                                                            |
+| `description`     | string | Task details                                                                                                                     |
+| `due_date`        | string | Due date in RFC 3339 format, e.g. `2026-12-01T10:00:00Z`                                                                         |
+| `status`          | string | One of `pending`, `in_progress`, `done`                                                                                          |
+| `reminder_status` | string | One of `pending`, `queued`, `sent`, `failed`. Managed by the server (see section 6); returned in responses                       |
 
 Example:
 
 ```json
 {
-  "id": "6720f1a2b3c4d5e6f7a8b9c0",
-  "title": "Write Day 14 code",
-  "description": "Registration and login",
+  "id": "0b7b1f0e-6f7e-4f43-9a2c-5c1d2b1a9e10",
+  "owner_id": "5f0c3b8e-1d2a-4c55-8d0e-3a7b9c1e2f40",
+  "title": "Write Day 31 code",
+  "description": "Postgres task repository",
   "due_date": "2026-12-01T10:00:00Z",
   "status": "pending",
   "reminder_status": "pending"
@@ -85,18 +94,18 @@ Example:
 
 ### User
 
-| Field      | Type   | Description                                                        |
-| ---------- | ------ | ------------------------------------------------------------------ |
-| `id`       | string | MongoDB ObjectID as a 24-character hex string                      |
-| `username` | string | Unique username, 3 to 32 characters                                |
-| `password` | string | Stored only as a bcrypt hash. It is never returned in any response |
-| `role`     | string | `admin` or `user`                                                  |
+| Field      | Type   | Description                                                           |
+| ---------- | ------ | --------------------------------------------------------------------- |
+| `id`       | string | Generated by the server (UUID in PostgreSQL, ObjectID hex in MongoDB) |
+| `username` | string | Unique username, 3 to 32 characters                                   |
+| `password` | string | Stored only as a bcrypt hash. It is never returned in any response    |
+| `role`     | string | `admin` or `user`                                                     |
 
 Example response (the password hash is never included):
 
 ```json
 {
-  "id": "6720f1a2b3c4d5e6f7a8b9c1",
+  "id": "5f0c3b8e-1d2a-4c55-8d0e-3a7b9c1e2f40",
   "username": "michael",
   "role": "admin"
 }
@@ -114,20 +123,27 @@ Authorization: Bearer <token>
 
 ### Roles and access rules
 
-| Method | Path           | Access             | Description             | Success status |
-| ------ | -------------- | ------------------ | ----------------------- | -------------- |
-| POST   | `/register`    | public             | Create a user           | 201            |
-| POST   | `/login`       | public             | Log in and get a JWT    | 200            |
-| GET    | `/tasks`       | any logged-in user | List all tasks          | 200            |
-| GET    | `/tasks/:id`   | any logged-in user | Get one task by ID      | 200            |
-| POST   | `/tasks`       | admin only         | Create a task           | 201            |
-| PUT    | `/tasks/:id`   | admin only         | Update a task           | 200            |
-| DELETE | `/tasks/:id`   | admin only         | Delete a task           | 200            |
-| POST   | `/promote/:id` | admin only         | Promote a user to admin | 200            |
+| Method | Path           | Access              | Description                                    | Success status |
+| ------ | -------------- | ------------------- | ---------------------------------------------- | -------------- |
+| POST   | `/register`    | public              | Create a user                                  | 201            |
+| POST   | `/login`       | public              | Log in and get a JWT                           | 200            |
+| GET    | `/tasks`       | any logged-in user  | List your tasks (admins: all tasks), paginated | 200            |
+| GET    | `/tasks/:id`   | task owner or admin | Get one task by ID                             | 200            |
+| POST   | `/tasks`       | any logged-in user  | Create a task owned by you                     | 201            |
+| PUT    | `/tasks/:id`   | task owner or admin | Update a task                                  | 200            |
+| DELETE | `/tasks/:id`   | task owner or admin | Delete a task                                  | 200            |
+| POST   | `/promote/:id` | admin only          | Promote a user to admin                        | 200            |
 
 - The **first registered user becomes `admin`**. Every user registered after that is a normal `user`.
 - An admin can promote other users with `POST /promote/:id`.
 - A promoted user must **log in again** to get a new token, because the role is stored inside the token.
+
+### Task ownership (new in Task 9)
+
+- Every task belongs to the user who created it. The owner is taken from the token; an `owner_id` in a request body is ignored.
+- A normal user can list, read, update and delete **only their own tasks**. An admin can access **all** tasks.
+- When a normal user requests a task that belongs to someone else, the API answers **404 `task not found`**, exactly as if the task did not exist, so it does not reveal that the task exists.
+- Updating a task never changes its owner.
 
 ### 3.1 POST /register
 
@@ -148,7 +164,7 @@ Rules: `username` is 3 to 32 characters and must be unique; `password` is 8 to 7
 
 ```json
 {
-  "id": "6720f1a2b3c4d5e6f7a8b9c1",
+  "id": "5f0c3b8e-1d2a-4c55-8d0e-3a7b9c1e2f40",
   "username": "michael",
   "role": "admin"
 }
@@ -204,7 +220,7 @@ Promotes the user with the given ID to `admin`.
 
 | Status      | When                              | Body                                 |
 | ----------- | --------------------------------- | ------------------------------------ |
-| 400         | `:id` is not a valid ObjectID     | `{"error": "invalid user id"}`       |
+| 400         | `:id` is not a valid ID           | `{"error": "invalid user id"}`       |
 | 401         | Missing, invalid or expired token | see section 3.4                      |
 | 403         | The caller is not an admin        | `{"error": "admin access required"}` |
 | 404         | No user has this ID               | `{"error": "user not found"}`        |
@@ -215,7 +231,7 @@ Promotes the user with the given ID to `admin`.
 | Status | Meaning                             | Example                                                       |
 | ------ | ----------------------------------- | ------------------------------------------------------------- |
 | 401    | The caller is **not authenticated** | No token, malformed header, wrong signature, or expired token |
-| 403    | Authenticated, but **not allowed**  | A normal `user` tries to create, update or delete a task      |
+| 403    | Authenticated, but **not allowed**  | A normal `user` calls `POST /promote/:id`                     |
 
 401 bodies:
 
@@ -237,20 +253,41 @@ Promotes the user with the given ID to `admin`.
 
 ## 4. Task Endpoints
 
-All task endpoints require a valid token (see section 3). Every task in a response now includes the `reminder_status` field (see section 2).
+All task endpoints require a valid token (see section 3) and follow the ownership rules in section 3. Every task in a response includes the `owner_id` and `reminder_status` fields (see section 2).
 
 ### 4.1 GET /tasks
 
-Returns every task. If there are no tasks, the response is an empty array `[]`, never `null`.
+Returns one page of tasks, ordered by `due_date` ascending and then by `id`. A normal user gets only their own tasks; an admin gets the tasks of all users. If there are no tasks, the response is an empty array `[]`, never `null`.
+
+**Query parameters**
+
+| Parameter | Default | Rules                                        |
+| --------- | ------- | -------------------------------------------- |
+| `page`    | `1`     | Integer, 1 or higher                         |
+| `limit`   | `10`    | Integer from 1 to 100                        |
+| `status`  | (none)  | Filter by `pending`, `in_progress` or `done` |
+
+An invalid value returns 400.
+
+**Response headers**
+
+| Header          | Meaning                                               |
+| --------------- | ----------------------------------------------------- |
+| `X-Total-Count` | Total number of tasks matching the filter (all pages) |
+| `X-Page`        | The page that was returned                            |
+| `X-Limit`       | The page size that was used                           |
+
+The response body is still a plain array of tasks, so existing clients keep working. Example: `GET /tasks?page=2&limit=5&status=done`.
 
 **Response 200**
 
 ```json
 [
   {
-    "id": "6720f1a2b3c4d5e6f7a8b9c0",
-    "title": "Write Day 14 code",
-    "description": "Registration and login",
+    "id": "0b7b1f0e-6f7e-4f43-9a2c-5c1d2b1a9e10",
+    "owner_id": "5f0c3b8e-1d2a-4c55-8d0e-3a7b9c1e2f40",
+    "title": "Write Day 31 code",
+    "description": "Postgres task repository",
     "due_date": "2026-12-01T10:00:00Z",
     "status": "pending",
     "reminder_status": "pending"
@@ -258,52 +295,57 @@ Returns every task. If there are no tasks, the response is an empty array `[]`, 
 ]
 ```
 
-**Errors:** 401, 500, 503, 504.
+**Errors**
+
+| Status      | When                                   | Body                                |
+| ----------- | -------------------------------------- | ----------------------------------- |
+| 400         | `page`, `limit` or `status` is invalid | `{"error": "<validation message>"}` |
+| 401         | Missing or invalid token               | see section 3.4                     |
+| 500/503/504 | Database problem                       | see section 5                       |
 
 ### 4.2 GET /tasks/:id
 
-Returns one task.
+Returns one task (yours, or any task if you are an admin).
 
 **Response 200**: a single task object (see section 2).
 
 **Errors**
 
-| Status      | When                          | Body                           |
-| ----------- | ----------------------------- | ------------------------------ |
-| 400         | `:id` is not a valid ObjectID | `{"error": "invalid task id"}` |
-| 401         | Missing or invalid token      | see section 3.4                |
-| 404         | No task has this ID           | `{"error": "task not found"}`  |
-| 500/503/504 | Database problem              | see section 5                  |
+| Status      | When                                               | Body                           |
+| ----------- | -------------------------------------------------- | ------------------------------ |
+| 400         | `:id` is not a valid ID                            | `{"error": "invalid task id"}` |
+| 401         | Missing or invalid token                           | see section 3.4                |
+| 404         | No task has this ID, or it belongs to another user | `{"error": "task not found"}`  |
+| 500/503/504 | Database problem                                   | see section 5                  |
 
-### 4.3 POST /tasks (admin only)
+### 4.3 POST /tasks
 
-Creates a task. The server generates the `id`; any `id` in the body is ignored. A new task always starts with `reminder_status` = `pending`.
+Creates a task owned by the logged-in user. The server generates the `id` and sets `owner_id` from the token; any `id` or `owner_id` in the body is ignored. A new task always starts with `reminder_status` = `pending`.
 
 **Request body**
 
 ```json
 {
-  "title": "Write Day 14 code",
-  "description": "Registration and login",
+  "title": "Write Day 31 code",
+  "description": "Postgres task repository",
   "due_date": "2026-12-01T10:00:00Z",
   "status": "pending"
 }
 ```
 
-**Response 201**: the created task, including its new `id` and `reminder_status`.
+**Response 201**: the created task, including its new `id`, `owner_id` and `reminder_status`.
 
 **Errors**
 
-| Status      | When                                     | Body                                 |
-| ----------- | ---------------------------------------- | ------------------------------------ |
-| 400         | Invalid JSON or a field fails validation | `{"error": "<validation message>"}`  |
-| 401         | Missing or invalid token                 | see section 3.4                      |
-| 403         | The caller is not an admin               | `{"error": "admin access required"}` |
-| 500/503/504 | Database problem                         | see section 5                        |
+| Status      | When                                     | Body                                |
+| ----------- | ---------------------------------------- | ----------------------------------- |
+| 400         | Invalid JSON or a field fails validation | `{"error": "<validation message>"}` |
+| 401         | Missing or invalid token                 | see section 3.4                     |
+| 500/503/504 | Database problem                         | see section 5                       |
 
-### 4.4 PUT /tasks/:id (admin only)
+### 4.4 PUT /tasks/:id
 
-Updates the editable fields of an existing task (`title`, `description`, `due_date`, `status`). The `id` cannot be changed; an `id` in the body is ignored.
+Updates the editable fields of an existing task (`title`, `description`, `due_date`, `status`). Allowed for the task owner and for admins. The `id` and `owner_id` cannot be changed; values sent for them are ignored.
 
 If `due_date` is changed to a time in the future, the task's `reminder_status` is reset to `pending`, so a new reminder will be sent for the new due date.
 
@@ -320,23 +362,19 @@ If `due_date` is changed to a time in the future, the task's `reminder_status` i
 
 **Response 200**: the updated task.
 
-Sending values identical to the stored ones is still a success and returns 200.
-
 **Errors**
 
-| Status      | When                                     | Body                                 |
-| ----------- | ---------------------------------------- | ------------------------------------ |
-| 400         | `:id` is not a valid ObjectID            | `{"error": "invalid task id"}`       |
-| 400         | Invalid JSON or a field fails validation | `{"error": "<validation message>"}`  |
-| 400         | Body contains no updatable fields        | `{"error": "no fields to update"}`   |
-| 401         | Missing or invalid token                 | see section 3.4                      |
-| 403         | The caller is not an admin               | `{"error": "admin access required"}` |
-| 404         | No task has this ID                      | `{"error": "task not found"}`        |
-| 500/503/504 | Database problem                         | see section 5                        |
+| Status      | When                                               | Body                                |
+| ----------- | -------------------------------------------------- | ----------------------------------- |
+| 400         | `:id` is not a valid ID                            | `{"error": "invalid task id"}`      |
+| 400         | Invalid JSON or a field fails validation           | `{"error": "<validation message>"}` |
+| 401         | Missing or invalid token                           | see section 3.4                     |
+| 404         | No task has this ID, or it belongs to another user | `{"error": "task not found"}`       |
+| 500/503/504 | Database problem                                   | see section 5                       |
 
-### 4.5 DELETE /tasks/:id (admin only)
+### 4.5 DELETE /tasks/:id
 
-Deletes a task permanently.
+Deletes a task permanently. Allowed for the task owner and for admins.
 
 **Response 200**
 
@@ -348,13 +386,12 @@ Deletes a task permanently.
 
 **Errors**
 
-| Status      | When                                                                        | Body                                 |
-| ----------- | --------------------------------------------------------------------------- | ------------------------------------ |
-| 400         | `:id` is not a valid ObjectID                                               | `{"error": "invalid task id"}`       |
-| 401         | Missing or invalid token                                                    | see section 3.4                      |
-| 403         | The caller is not an admin                                                  | `{"error": "admin access required"}` |
-| 404         | No task has this ID (this also happens when you delete the same task twice) | `{"error": "task not found"}`        |
-| 500/503/504 | Database problem                                                            | see section 5                        |
+| Status      | When                                                                       | Body                           |
+| ----------- | -------------------------------------------------------------------------- | ------------------------------ |
+| 400         | `:id` is not a valid ID                                                    | `{"error": "invalid task id"}` |
+| 401         | Missing or invalid token                                                   | see section 3.4                |
+| 404         | No task has this ID, it belongs to another user, or it was already deleted | `{"error": "task not found"}`  |
+| 500/503/504 | Database problem                                                           | see section 5                  |
 
 ---
 
@@ -370,13 +407,13 @@ Errors are grouped by cause, so clients can react correctly:
 
 | Type             | Status | Message                                                                                                 | Meaning                                                                                |
 | ---------------- | ------ | ------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| Validation       | 400    | `invalid task id`, `invalid user id`, `no fields to update`, or the binding message                     | The request is wrong; fix it and retry                                                 |
+| Validation       | 400    | `invalid task id`, `invalid user id`, a `page`/`limit`/`status` message, or the binding message         | The request is wrong; fix it and retry                                                 |
 | Unauthenticated  | 401    | `missing or malformed Authorization header`, `invalid or expired token`, `invalid username or password` | The caller must log in or send a valid token                                           |
 | Forbidden        | 403    | `admin access required`                                                                                 | The caller is logged in but their role is not allowed                                  |
-| Not found        | 404    | `task not found`, `user not found`                                                                      | The ID is valid but nothing has it                                                     |
+| Not found        | 404    | `task not found`, `user not found`                                                                      | Nothing has this ID, or (for tasks) it belongs to another user                         |
 | Conflict         | 409    | `username already taken`                                                                                | The username already exists                                                            |
 | Database timeout | 504    | `database timed out, please try again`                                                                  | The database did not answer in 5 seconds                                               |
-| Network/DB down  | 503    | `database unavailable, please try again later`                                                          | The server cannot reach MongoDB                                                        |
+| Network/DB down  | 503    | `database unavailable, please try again later`                                                          | The server cannot reach the database                                                   |
 | Other DB error   | 500    | `failed to <fetch/create/update/delete> task`                                                           | Unexpected failure; details are logged on the server only and never sent to the client |
 
 ---
@@ -388,7 +425,7 @@ The server runs a reminder system in the background, in the same process as the 
 ### 6.1 How it works
 
 1. Every `REMINDER_INTERVAL` (and once immediately at startup) a scheduler looks for tasks that are due within `REMINDER_WINDOW` (overdue tasks are included), whose `status` is not `done` and whose `reminder_status` is `pending`.
-2. It atomically marks them `queued` and puts them in a buffered channel.
+2. It atomically marks them `queued` and puts them in a buffered channel. In PostgreSQL this uses `UPDATE ... FOR UPDATE SKIP LOCKED`, so two scheduler instances never claim the same task.
 3. `REMINDER_WORKERS` worker goroutines take tasks from the channel and deliver a reminder. For now, delivery means writing a log line with the task ID, title and due date.
 4. Delivery is tried up to 3 times with a short wait between attempts. The task becomes `sent` on success, or `failed` after the last attempt.
 
@@ -409,25 +446,32 @@ If the server crashes after a task is claimed (`queued`) but before the reminder
 
 ### 6.4 Graceful shutdown
 
-On SIGINT (Ctrl+C) or SIGTERM the server stops in this order, logging each step: HTTP server (10 second timeout), reminder scheduler, reminder workers (in-flight reminders finish), then the MongoDB connection. Details are in `docs/concurrency.md`.
+On SIGINT (Ctrl+C) or SIGTERM the server stops in this order, logging each step: HTTP server (10 second timeout), reminder scheduler, reminder workers (in-flight reminders finish), then the database connection. Details are in `docs/concurrency.md`.
 
 ---
 
-## 7. Changes from Task 7 to Task 8
+## 7. Changes from Task 8 to Task 9
 
-- **Task endpoint paths, request bodies and response shapes are unchanged.**
-- **New:** the `reminder_status` field appears in every task response.
-- **New:** a task whose `due_date` is moved to the future through `PUT /tasks/:id` gets `reminder_status` = `pending` again.
-- **New:** background reminders and graceful shutdown (see section 6).
-- **New:** the optional `REMINDER_INTERVAL`, `REMINDER_WINDOW`, `REMINDER_WORKERS` and `REMINDER_QUEUE_SIZE` environment variables. Invalid values stop the server at startup.
+- **Storage:** PostgreSQL is now the default database for users and tasks, created through versioned migrations in `migrations/`. MongoDB still works with `DB_DRIVER=mongo`.
+- **Ownership (changed rule):** every task has an owner (`owner_id`). Normal users now create, read, update and delete **their own tasks**; admins can access all tasks. This replaces the Task 5 rule that only admins could create, update or delete tasks. Another user's task returns 404.
+- **Pagination and filtering:** `GET /tasks` accepts `page`, `limit` and `status`, and returns `X-Total-Count`, `X-Page` and `X-Limit` headers. The body is still an array.
+- **IDs:** task and user IDs are UUID strings in PostgreSQL (ObjectID hex strings in MongoDB).
+- **New fields and variables:** `owner_id` in task responses; `DB_DRIVER` and `DATABASE_URL`.
+- **Unchanged:** all endpoint paths, request bodies and the reminder system.
 
-### Earlier change log (Task 4 to Task 5)
+### Earlier change log
 
-- **New:** `POST /register`, `POST /login` and `POST /promote/:id`.
-- **New:** every task endpoint now requires `Authorization: Bearer <token>` and returns 401 without it.
-- **New:** only admins can create, update and delete tasks (403 for normal users). Any logged-in user can read tasks.
-- **New:** `users` collection with a unique index on `username`.
-- **New:** the `JWT_SECRET` environment variable is required.
+**Task 7 to Task 8**
+
+- New `reminder_status` field and background reminders with graceful shutdown.
+- A task whose `due_date` is moved to the future gets `reminder_status` = `pending` again.
+- New optional `REMINDER_*` environment variables. Invalid values stop the server at startup.
+
+**Task 4 to Task 5**
+
+- New `POST /register`, `POST /login` and `POST /promote/:id`.
+- Every task endpoint requires `Authorization: Bearer <token>` and returns 401 without it.
+- New `users` store with a unique `username`, and the required `JWT_SECRET` variable.
 
 ---
 
@@ -439,9 +483,15 @@ On SIGINT (Ctrl+C) or SIGTERM the server stops in this order, logging each step:
 3. Run **Register**, then **Login**. Save the returned token in a `token` variable (for example with a test script: `pm.collectionVariables.set("token", pm.response.json().token)`).
 4. Set the collection's Authorization to **Bearer Token** with the value `{{token}}`.
 5. Run **Create task** first. It saves the new ID in the `taskId` variable for the other requests.
-6. Check these cases: no token gives 401, a token from a normal user on `POST /tasks` gives 403, a duplicate username gives 409, and a wrong password gives 401.
-7. Open MongoDB Compass or mongosh and check that `taskmanager.users` stores a bcrypt hash (starting with `$2a$`) and never the plain password.
-8. To check reminders: create a task due in about 2 minutes, start the server with `REMINDER_INTERVAL=5s` and `REMINDER_WINDOW=3m`, and watch `reminder_status` change from `pending` to `queued` to `sent` (GET the task, or look in Compass).
+6. Check these cases:
+   - no token gives 401;
+   - a duplicate username gives 409 and a wrong password gives 401;
+   - register a second user and log in as them: `GET /tasks/<first user's task id>` gives 404 and their `GET /tasks` list is empty;
+   - an admin token can read, update and delete that same task;
+   - `GET /tasks?page=1&limit=5` returns the three `X-` headers; `?page=0`, `?limit=101` and `?status=foo` each give 400.
+7. In `psql` (or MongoDB Compass) check that the `users` table stores a bcrypt hash (starting with `$2a$`) and never the plain password.
+8. To check reminders: create a task due in about 2 minutes, start the server with `REMINDER_INTERVAL=5s` and `REMINDER_WINDOW=3m`, and watch `reminder_status` change from `pending` to `queued` to `sent`.
+9. Run the whole collection once with `DB_DRIVER=postgres` and once with `DB_DRIVER=mongo` to confirm both work.
 
 Example `curl` commands (on Windows PowerShell use `curl.exe`):
 
@@ -454,14 +504,14 @@ curl -X POST http://localhost:8080/register -H "Content-Type: application/json" 
 curl -X POST http://localhost:8080/login -H "Content-Type: application/json" \
   -d '{"username":"michael","password":"secret123"}'
 
-# create a task (admin token)
+# create a task (any logged-in user; you become the owner)
 curl -X POST http://localhost:8080/tasks -H "Content-Type: application/json" \
   -H "Authorization: Bearer <token>" \
   -d '{"title":"Demo","description":"test","due_date":"2026-12-01T10:00:00Z","status":"pending"}'
 
-# list tasks
-curl http://localhost:8080/tasks -H "Authorization: Bearer <token>"
+# list your tasks, page 1, 5 per page, only pending (-i shows the X- headers)
+curl -i "http://localhost:8080/tasks?page=1&limit=5&status=pending" -H "Authorization: Bearer <token>"
 
-# promote a user
+# promote a user (admin only)
 curl -X POST http://localhost:8080/promote/<user_id> -H "Authorization: Bearer <token>"
 ```

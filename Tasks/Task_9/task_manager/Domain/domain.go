@@ -23,6 +23,7 @@ type Task struct {
 	DueDate        time.Time `json:"due_date"`
 	Status         string    `json:"status"`
 	ReminderStatus string    `json:"reminder_status"`
+	OwnerID        string    `json:"owner_id,omitempty"` // set by the usecase from the authenticated user
 }
 
 // User is the core user entity. Password holds the bcrypt hash only.
